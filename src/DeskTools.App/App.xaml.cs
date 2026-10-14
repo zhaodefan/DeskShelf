@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Threading;
 using DeskTools.App.Services;
 using DeskTools.App.ViewModels;
@@ -10,6 +10,7 @@ using DeskTools.Infrastructure;
 using DeskTools.Infrastructure.Hotkeys;
 using DeskTools.Infrastructure.Storage;
 using DeskTools.Infrastructure.Theming;
+using DeskTools.Infrastructure.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -18,9 +19,13 @@ namespace DeskTools.App;
 /// <summary>
 /// 应用启动与组合根。
 /// 职责：注册服务、单实例互斥、全局异常兜底、创建面板窗口与托盘图标、
-/// 注册全局热键，并在退出时保存状态。
+/// 注册全局热键、应用主题，并在退出时保存状态。
 /// </summary>
-public partial class App : System.Windows.Application
+/// <remarks>
+/// 本类同时实现 <see cref="IThemeApplier"/>：主题资源字典由 Application 持有，
+/// 设置窗口通过该接口请求换肤，避免 ViewModel 反向依赖 App。
+/// </remarks>
+public partial class App : System.Windows.Application, IThemeApplier
 {
     private const string InstanceMutexName = @"Global\DeskTools.SingleInstance";
 
@@ -97,7 +102,7 @@ public partial class App : System.Windows.Application
             _logger.LogWarning(ex, "加载设置失败，使用默认设置。");
         }
 
-        ApplyTheme();
+        ApplyTheme(IsLightTheme());
 
         _panel = _services.GetRequiredService<PanelWindow>();
         _tray = _services.GetRequiredService<TrayIconHost>();
@@ -166,8 +171,22 @@ public partial class App : System.Windows.Application
             sp.GetRequiredService<ILogger<ThumbnailLoader>>()));
         services.AddSingleton<SampleDataSeeder>();
         services.AddSingleton<ThumbnailLoadScheduler>();
+        services.AddSingleton<IThemeApplier>(this);
         services.AddSingleton<PanelViewModel>();
         services.AddSingleton<PanelWindow>();
+
+        // 设置：ViewModel 单例（持有打开时的设置快照用于「取消」回滚），窗口按需新建。
+        // 窗口必须是 Transient —— WPF 的 Window 一旦 Close 就无法再次 Show，
+        // 注册成单例会让「打开设置 → 关闭 → 再打开」直接抛异常。
+        services.AddSingleton<SettingsViewModel>(sp => new SettingsViewModel(
+            sp.GetRequiredService<ISettingsStore>(),
+            sp.GetRequiredService<IHotkeyService>(),
+            sp.GetRequiredService<AutoStartService>(),
+            sp.GetRequiredService<ShelfService>(),
+            sp.GetRequiredService<IThemeApplier>(),
+            () => sp.GetRequiredService<ISystemLauncher>().OpenPathAsync(paths.Root),
+            sp.GetRequiredService<ILogger<SettingsViewModel>>()));
+        services.AddTransient(sp => new SettingsWindow(sp.GetRequiredService<SettingsViewModel>()));
         services.AddSingleton<TrayIconHost>();
 
         return services.BuildServiceProvider(new ServiceProviderOptions
@@ -176,6 +195,13 @@ public partial class App : System.Windows.Application
             ValidateScopes = true,
         });
     }
+
+    /// <summary>设置窗口请求：按当前设置应用主题。</summary>
+    public void ApplyFromSettings()
+        => ApplyTheme(IsLightTheme());
+
+    /// <summary>设置窗口请求：临时预览指定明暗（不写设置）。</summary>
+    public void Preview(bool light) => ApplyTheme(light);
 
     /// <summary>启动自检：确认 unit 枚举的每个值都在 <c>UnitCatalog</c> 中登记。</summary>
     private void VerifyUnitCatalog()
@@ -221,9 +247,9 @@ public partial class App : System.Windows.Application
     /// 应用主题：整体替换令牌资源字典（浅色 / 深色同名键），
     /// 界面全部使用 DynamicResource，因此无需重启或重建视图。
     /// </summary>
-    private void ApplyTheme()
+    /// <param name="light">是否应用浅色；由调用方决定（设置里可能是「跟随系统」）。</param>
+    private void ApplyTheme(bool light)
     {
-        var light = IsLightTheme();
         var source = light ? "Themes/Tokens.Light.xaml" : "Themes/Tokens.Dark.xaml";
 
         try

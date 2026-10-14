@@ -12,6 +12,7 @@ using DeskTools.Domain;
 using DeskTools.Domain.Units;
 using DeskTools.Infrastructure.Clipboard;
 using DeskTools.Infrastructure.Windows;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace DeskTools.App.Views;
@@ -36,8 +37,8 @@ public partial class PanelWindow : Window
     private readonly IDisplayService _display;
     private readonly ISettingsStore _settings;
     private readonly ISystemLauncher _launcher;
+    private readonly IServiceProvider _services;
     private readonly ILogger<PanelWindow> _logger;
-    private readonly string _settingsDirectory;
 
     private bool _isShuttingDown;
 
@@ -45,22 +46,25 @@ public partial class PanelWindow : Window
     private bool _dragOverLogged;
 
     /// <summary>创建面板窗口。</summary>
+    /// <remarks>
+    /// 注入 <see cref="IServiceProvider"/> 而不是 <c>Func&lt;SettingsWindow&gt;</c>：
+    /// 容器不认 <c>Func&lt;T&gt;</c>，会让 <c>ValidateOnBuild</c> 在启动阶段直接报错；
+    /// 惰性解析设置窗口（单例）既避免启动即构造，也不需要额外注册工厂委托。
+    /// </remarks>
     public PanelWindow(
         PanelViewModel viewModel,
         IDisplayService display,
         ISettingsStore settings,
         ISystemLauncher launcher,
+        IServiceProvider services,
         ILogger<PanelWindow> logger)
     {
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         _display = display ?? throw new ArgumentNullException(nameof(display));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _launcher = launcher ?? throw new ArgumentNullException(nameof(launcher));
+        _services = services ?? throw new ArgumentNullException(nameof(services));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-
-        _settingsDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "DeskTools");
 
         InitializeComponent();
         DataContext = viewModel;
@@ -497,13 +501,27 @@ public partial class PanelWindow : Window
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e) => HidePanel();
 
-    private void OnSettingsClick(object sender, RoutedEventArgs e) => _ = OpenSettingsFolderAsync();
-
-    private async Task OpenSettingsFolderAsync()
+    private void OnSettingsClick(object sender, RoutedEventArgs e)
     {
-        // 设置界面安排在后续阶段；当前先打开设置文件所在目录，保证入口可用且不误导
-        var ok = await _launcher.OpenPathAsync(_settingsDirectory).ConfigureAwait(true);
-        _viewModel.ShowStatus(ok ? "已打开设置目录（设置界面在后续阶段提供）。" : "无法打开设置目录。");
+        try
+        {
+            // 每次都用新窗口实例：WPF 的 Window 一旦 Close 就不能再 Show，
+            // 复用单例会在「关闭后再次点击设置」时抛 InvalidOperationException。
+            var settings = _services.GetRequiredService<SettingsWindow>();
+
+            // ViewModel 是单例：重新载入快照，否则「取消」会回滚到上一次打开时的状态
+            settings.ReloadFromSettings();
+
+            settings.Owner = this;
+            settings.Show();
+            settings.Activate();
+            _logger.LogDebug("设置窗口已打开。");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "打开设置窗口失败。");
+            _viewModel.ShowStatus("打开设置窗口失败，详见日志。");
+        }
     }
 
     // ————————————————————————— 视觉树辅助 —————————————————————————

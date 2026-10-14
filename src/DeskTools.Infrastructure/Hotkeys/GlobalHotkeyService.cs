@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using DeskTools.Application.Abstractions;
 using DeskTools.Application.Settings;
@@ -167,7 +167,7 @@ public sealed class GlobalHotkeyService : IHotkeyService, IDisposable
     }
 
     /// <summary>把设置中的主键名解析为 Win32 虚拟键码。</summary>
-    internal static bool TryParseVirtualKey(string key, out uint virtualKey)
+    public static bool TryParseVirtualKey(string key, out uint virtualKey)
     {
         virtualKey = 0;
         if (string.IsNullOrWhiteSpace(key))

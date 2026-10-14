@@ -12,6 +12,8 @@
         <ResourceDictionary Source="Themes/Icons.xaml" />
         <!-- 控件样式 -->
         <ResourceDictionary Source="Themes/Controls.xaml" />
+        <!-- 设置窗口的控件样式 -->
+        <ResourceDictionary Source="Themes/Settings.xaml" />
         <!-- unit 卡片模板（按 UnitCatalog.ViewKey 分派） -->
         <ResourceDictionary Source="Templates/UnitTemplates.xaml" />
       </ResourceDictionary.MergedDictionaries>

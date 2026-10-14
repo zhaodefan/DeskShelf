@@ -21,3 +21,4 @@ publish/
 
 # 设计走查临时诊断输出
 diag.log
+hotkey-diag.log
