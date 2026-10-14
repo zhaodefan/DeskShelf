@@ -116,7 +116,8 @@ public sealed class Shelf
             return false;
         }
 
-        var target = Clamp(newIndex);
+        // 移动与插入不同：目标必须是既存元素的下标，故上界为 Count - 1
+        var target = ClampForMove(newIndex);
         if (target == oldIndex)
         {
             return false;
@@ -187,4 +188,7 @@ public sealed class Shelf
     }
 
     private int Clamp(int index) => index < 0 ? 0 : index > _units.Count ? _units.Count : index;
+
+    private int ClampForMove(int index)
+        => _units.Count == 0 ? 0 : index < 0 ? 0 : index > _units.Count - 1 ? _units.Count - 1 : index;
 }

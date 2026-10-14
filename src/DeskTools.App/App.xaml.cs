@@ -1,0 +1,283 @@
+﻿using System.Windows;
+using System.Windows.Threading;
+using DeskTools.App.Services;
+using DeskTools.App.ViewModels;
+using DeskTools.App.Views;
+using DeskTools.Application.Abstractions;
+using DeskTools.Application.Services;
+using DeskTools.Application.Settings;
+using DeskTools.Infrastructure;
+using DeskTools.Infrastructure.Hotkeys;
+using DeskTools.Infrastructure.Storage;
+using DeskTools.Infrastructure.Theming;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+namespace DeskTools.App;
+
+/// <summary>
+/// 应用启动与组合根。
+/// 职责：注册服务、单实例互斥、全局异常兜底、创建面板窗口与托盘图标、
+/// 注册全局热键，并在退出时保存状态。
+/// </summary>
+public partial class App : System.Windows.Application
+{
+    private const string InstanceMutexName = @"Global\DeskTools.SingleInstance";
+
+    private Mutex? _instanceMutex;
+    private ServiceProvider? _services;
+    private PanelWindow? _panel;
+    private TrayIconHost? _tray;
+    private ILogger<App>? _logger;
+
+    /// <summary>服务提供器（供托盘等在同一进程内解析服务）。</summary>
+    internal IServiceProvider Services => _services
+        ?? throw new InvalidOperationException("服务容器尚未初始化。");
+
+    /// <inheritdoc />
+    protected override async void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        try
+        {
+            await StartAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            // 启动阶段没有 UI 可承载异常，必须显式兜底，否则表现为「双击没反应」
+            try
+            {
+                _logger?.LogCritical(ex, "启动失败。");
+            }
+            catch (Exception)
+            {
+                // 日志不可用时忽略
+            }
+
+            MessageBox.Show(
+                $"DeskTools 启动失败：{ex.Message}\n\n详细信息见 %APPDATA%\\DeskTools\\logs。",
+                "DeskTools",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+
+            Shutdown();
+        }
+    }
+
+    private async Task StartAsync()
+    {
+        // 单实例：多开会导致热键注册失败与数据文件竞争
+        _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var isFirstInstance);
+        if (!isFirstInstance)
+        {
+            MessageBox.Show("DeskTools 已经在运行（请查看任务栏通知区域）。", "DeskTools", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
+        _services = BuildServices();
+        _services.UseDebouncedPersistence();
+        _logger = _services.GetRequiredService<ILogger<App>>();
+        _logger.LogInformation("DeskTools 启动，版本 {Version}。", typeof(App).Assembly.GetName().Version);
+
+        VerifyUnitCatalog();
+
+        // 先读设置：窗口定位与热键都依赖它（缺失文件时内部回退默认值）
+        try
+        {
+            await _services.GetRequiredService<ISettingsStore>().LoadAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "加载设置失败，使用默认设置。");
+        }
+
+        ApplyTheme();
+
+        _panel = _services.GetRequiredService<PanelWindow>();
+        _tray = _services.GetRequiredService<TrayIconHost>();
+        _tray.Attach(this, _panel);
+
+        RegisterHotkey();
+
+        // 首发即显示面板（启动后直接可用；后续可在设置里改为静默启动）
+        _panel.ShowPanel();
+    }
+
+    /// <inheritdoc />
+    protected override async void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            if (_panel is not null)
+            {
+                await _panel.PersistAsync().ConfigureAwait(true);
+            }
+
+            // 退出前把防抖中的内容强制落盘，避免丢数据
+            _services?.GetService<DeskTools.Infrastructure.Persistence.DebouncedSaver>()?.FlushAsync().Wait(TimeSpan.FromSeconds(2));
+
+            if (_services?.GetService<IHotkeyService>() is { } hotkey)
+            {
+                hotkey.Unregister();
+            }
+
+            _tray?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "退出清理时发生异常。");
+        }
+        finally
+        {
+            _services?.Dispose();
+            _instanceMutex?.ReleaseMutex();
+            _instanceMutex?.Dispose();
+        }
+
+        base.OnExit(e);
+    }
+
+    private ServiceProvider BuildServices()
+    {
+        var services = new ServiceCollection();
+
+        var paths = new AppPaths();
+        paths.EnsureCreated();
+
+        services.AddLogging(builder =>
+        {
+            builder.AddDebug();
+            builder.AddProvider(new Infrastructure.Logging.FileLoggerProvider(paths.Logs, LogLevel.Information));
+        });
+
+        // 基础设施 + 用例服务（一行注册，表现层不接触具体实现）
+        services.AddDeskToolsInfrastructure();
+        // 表现层服务
+        services.AddSingleton<ImageBytesCache>();
+        services.AddSingleton<ThumbnailLoader>(sp => new ThumbnailLoader(
+            sp.GetRequiredService<ImageBytesCache>(),
+            sp.GetRequiredService<IImageBytesSource>(),
+            sp.GetRequiredService<ILogger<ThumbnailLoader>>()));
+        services.AddSingleton<SampleDataSeeder>();
+        services.AddSingleton<ThumbnailLoadScheduler>();
+        services.AddSingleton<PanelViewModel>();
+        services.AddSingleton<PanelWindow>();
+        services.AddSingleton<TrayIconHost>();
+
+        return services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true,
+        });
+    }
+
+    /// <summary>启动自检：确认 unit 枚举的每个值都在 <c>UnitCatalog</c> 中登记。</summary>
+    private void VerifyUnitCatalog()
+    {
+        var missing = Application.Catalog.UnitCatalog.FindUnregisteredKinds();
+        if (missing.Count > 0)
+        {
+            _logger?.LogError("以下 unit 类型未在 UnitCatalog 中注册：{Kinds}", string.Join(", ", missing));
+        }
+    }
+
+    private void RegisterHotkey()
+    {
+        if (_services?.GetService<IHotkeyService>() is not { } hotkey)
+        {
+            return;
+        }
+
+        hotkey.Pressed += OnHotkeyPressed;
+
+        var gesture = _services.GetRequiredService<ISettingsStore>().Current.Hotkey;
+        if (hotkey.TryRegister(gesture))
+        {
+            return;
+        }
+
+        _logger?.LogWarning("全局热键 {Gesture} 注册失败。", gesture.DisplayText);
+        _tray?.ShowWarning($"全局热键 {gesture.DisplayText} 被其他程序占用，可在设置中更换。");
+    }
+
+    private void OnHotkeyPressed(object? sender, EventArgs e)
+        => Dispatcher.BeginInvoke(new Action(() => _panel?.ToggleVisibility()), DispatcherPriority.Normal);
+
+    private bool IsLightTheme()
+        => _services?.GetRequiredService<ISettingsStore>().Current.Theme switch
+        {
+            AppTheme.Light => true,
+            AppTheme.Dark => false,
+            _ => SystemThemeDetector.IsLightTheme(),
+        };
+
+    /// <summary>
+    /// 应用主题：整体替换令牌资源字典（浅色 / 深色同名键），
+    /// 界面全部使用 DynamicResource，因此无需重启或重建视图。
+    /// </summary>
+    private void ApplyTheme()
+    {
+        var light = IsLightTheme();
+        var source = light ? "Themes/Tokens.Light.xaml" : "Themes/Tokens.Dark.xaml";
+
+        try
+        {
+            // 注意：使用绝对 pack URI 而非相对 URI —— 相对 URI 会按 BaseUri 折叠，
+            // 且 WPF 会按 URI 缓存资源字典，容易拿到上一次（浅色）的实例。
+            var dictionary = new ResourceDictionary
+            {
+                Source = new Uri($"pack://application:,,,/DeskTools;component/{source}", UriKind.Absolute),
+            };
+
+            // 约定：令牌字典始终是合并字典中的第 0 项
+            var merged = Resources.MergedDictionaries;
+            if (merged.Count == 0)
+            {
+                merged.Add(dictionary);
+            }
+            else
+            {
+                merged[0] = dictionary;
+            }
+
+            _logger?.LogInformation("主题已应用：{Theme}（窗口背景 {Color}）。",
+                light ? "浅色" : "深色",
+                (Resources["Brush.Window.Background"] as System.Windows.Media.SolidColorBrush)?.Color.ToString() ?? "?");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "应用主题失败，保持当前主题。");
+        }
+    }
+
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        // 记录完整堆栈：这类问题的定位完全依赖堆栈
+        _logger?.LogError(e.Exception, "UI 线程未处理异常：{Type}", e.Exception.GetType().Name);
+        _panel?.DataContext.As<PanelViewModel>()?.ShowStatus("发生未预期的错误，已记录日志。");
+        e.Handled = true;
+    }
+
+    private void OnDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        => _logger?.LogCritical(e.ExceptionObject as Exception, "后台线程未处理异常。");
+
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        _logger?.LogError(e.Exception, "未观测的任务异常。");
+        e.SetObserved();
+    }
+}
+
+/// <summary>内联的小工具：安全地做类型转换（避免在多处写 as + null 检查）。</summary>
+internal static class ObjectExtensions
+{
+    /// <summary>尝试转换为目标类型。</summary>
+    public static T? As<T>(this object? value)
+        where T : class => value as T;
+}

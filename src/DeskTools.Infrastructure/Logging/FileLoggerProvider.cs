@@ -140,7 +140,8 @@ public sealed class FileLoggerProvider : ILoggerProvider
             var line = $"{DateTime.Now:HH:mm:ss.fff} [{Level(logLevel)}] {shortCategory}: {message}";
             if (exception is not null)
             {
-                line += $" | {exception.GetType().Name}: {exception.Message}";
+                // 记录完整异常（含堆栈），否则排查系统级问题将无从下手
+                line += $" | {exception}";
             }
 
             _provider.Enqueue(line);

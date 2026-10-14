@@ -15,7 +15,18 @@ public static class SystemThemeDetector
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(PersonalizeKey, writable: false);
-            return key?.GetValue(ValueName) is not int value || value != 0;
+            var raw = key?.GetValue(ValueName);
+
+            // 该值在正常系统上为 DWORD，但受组策略或第三方工具影响也可能是字符串
+            var value = raw switch
+            {
+                int intValue => intValue,
+                string text when int.TryParse(text, out var parsed) => parsed,
+                _ => (int?)null,
+            };
+
+            // 键或值缺失（例如从未打开过个性化设置）按浅色处理
+            return value != 0;
         }
         catch (Exception)
         {

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DeskTools.App/DeskTools.App.csproj" />
+    <Project Path="src/DeskTools.Application/DeskTools.Application.csproj" />
+    <Project Path="src/DeskTools.Domain/DeskTools.Domain.csproj" />
+    <Project Path="src/DeskTools.Infrastructure/DeskTools.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DeskTools.Tests/DeskTools.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -6,6 +6,7 @@ using DeskTools.Infrastructure.Clipboard;
 using DeskTools.Infrastructure.Content;
 using DeskTools.Infrastructure.Dispatching;
 using DeskTools.Infrastructure.Hotkeys;
+using DeskTools.Infrastructure.Imaging;
 using DeskTools.Infrastructure.Launchers;
 using DeskTools.Infrastructure.Logging;
 using DeskTools.Infrastructure.Persistence;
@@ -54,12 +55,28 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IDisplayService, DisplayService>();
         services.AddSingleton<IHotkeyService, GlobalHotkeyService>();
         services.AddSingleton<AutoStartService>();
+        services.AddSingleton<IImageBytesSource, ImageBytesSource>();
         services.AddSingleton(sp => new DebouncedSaver(
             async token => await sp.GetRequiredService<ShelfService>().SaveAsync(token).ConfigureAwait(false)));
 
         // —— 用例服务（唯一逻辑入口） ——
         services.AddSingleton<ShelfService>();
 
+        return services;
+    }
+
+    /// <summary>
+    /// 把「置物架内容变化」接到防抖保存上：连续粘贴多条只会产生一次磁盘写入。
+    /// 需在容器构建后调用一次。
+    /// </summary>
+    /// <param name="services">已构建的服务提供器。</param>
+    public static IServiceProvider UseDebouncedPersistence(this IServiceProvider services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var shelf = services.GetRequiredService<ShelfService>();
+        var saver = services.GetRequiredService<DebouncedSaver>();
+        shelf.Changed += (_, _) => saver.Request();
         return services;
     }
 }

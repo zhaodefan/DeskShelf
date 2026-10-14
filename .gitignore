@@ -18,3 +18,6 @@ publish/
 
 # 本地数据（运行期会写到 %APPDATA%\DeskTools，此处仅防误提交）
 *.log
+
+# ����߲���ʱ������
+diag.log

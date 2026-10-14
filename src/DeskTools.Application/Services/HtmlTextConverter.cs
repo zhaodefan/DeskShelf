@@ -1,14 +1,15 @@
 using System.Net;
-using System.Text;
 using System.Text.RegularExpressions;
 
-namespace DeskTools.Infrastructure.Clipboard;
+namespace DeskTools.Application.Services;
 
 /// <summary>
-/// 剪贴板 <c>CF_HTML</c> 格式 → 纯文本的降级转换。
-/// 存在的意义：从浏览器复制/拖拽文字时，很多来源<b>只</b>提供 HTML Format，
-/// 不做这层降级就会出现「明明拖了文字却存不进去」。
+/// 剪贴板 / 拖拽数据中 <c>CF_HTML</c> 格式 → 纯文本的降级转换（平台无关的纯文本处理）。
 /// </summary>
+/// <remarks>
+/// 存在的意义：从浏览器复制或拖拽文字时，很多来源<b>只</b>提供 HTML Format 而不提供
+/// UnicodeText，不做这层降级就会出现「明明拖了文字却存不进去」。
+/// </remarks>
 public static partial class HtmlTextConverter
 {
     /// <summary>把 CF_HTML 负载（含头部）或裸 HTML 片段转换为纯文本。</summary>

@@ -113,60 +113,69 @@ public sealed class ImageFileStore : IImageStore
     {
         try
         {
-            if (File.Exists(targetPath))
+            // 已存在且非空才复用（上次失败可能留下 0 字节文件）
+            var existing = new FileInfo(targetPath);
+            if (existing.Exists && existing.Length > 0)
             {
                 return true;
             }
 
-            var decoded = await Task.Run(
-                () =>
-                {
-                    var uri = new Uri(sourcePath, UriKind.Absolute);
+            // 解码与编码必须放在同一个后台任务内完成：BitmapSource 具有线程亲和性，
+            // 把编码拆到另一个线程（即便源已 Freeze）会在 Save 阶段抛 InvalidOperationException。
+            var bytes = await Task.Run(() => EncodeThumbnail(sourcePath), cancellationToken).ConfigureAwait(false);
+            if (bytes is null || bytes.Length == 0)
+            {
+                return false;
+            }
 
-                    // 第一遍：只读元数据，拿到原始像素尺寸
-                    var probe = BitmapFrame.Create(uri, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
-                    var sourceWidth = probe.PixelWidth;
-                    var sourceHeight = probe.PixelHeight;
-
-                    // 第二遍：按需限制解码尺寸（原图已小于上限则不再缩放，避免二次插值损失）
-                    var image = new BitmapImage();
-                    image.BeginInit();
-                    image.UriSource = uri;
-                    image.CacheOption = BitmapCacheOption.OnLoad;
-                    image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-
-                    if (sourceWidth >= sourceHeight && sourceWidth > ThumbnailMaxEdge)
-                    {
-                        image.DecodePixelWidth = ThumbnailMaxEdge;
-                    }
-                    else if (sourceHeight > sourceWidth && sourceHeight > ThumbnailMaxEdge)
-                    {
-                        image.DecodePixelHeight = ThumbnailMaxEdge;
-                    }
-
-                    image.EndInit();
-                    image.Freeze();
-                    return image;
-                },
-                cancellationToken).ConfigureAwait(false);
-
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(decoded));
-
-            await Task.Run(
-                () =>
-                {
-                    using var output = File.Create(targetPath);
-                    encoder.Save(output);
-                },
-                cancellationToken).ConfigureAwait(false);
-
+            await File.WriteAllBytesAsync(targetPath, bytes, cancellationToken).ConfigureAwait(false);
             return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "生成缩略图失败，将回退使用原图：{Path}", sourcePath);
             return false;
         }
+    }
+
+    /// <summary>在同一个后台线程内完成「解码 → 缩放 → PNG 编码」，返回缩略图字节。</summary>
+    private byte[]? EncodeThumbnail(string sourcePath)
+    {
+        var uri = new Uri(sourcePath, UriKind.Absolute);
+
+        // 第一遍：只读元数据，拿到原始像素尺寸
+        var probe = BitmapFrame.Create(uri, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
+        var sourceWidth = probe.PixelWidth;
+        var sourceHeight = probe.PixelHeight;
+
+        // 第二遍：按需限制解码尺寸（原图已小于上限则不再缩放，避免二次插值损失）
+        var image = new BitmapImage();
+        image.BeginInit();
+        image.UriSource = uri;
+        image.CacheOption = BitmapCacheOption.OnLoad;
+        image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+
+        if (sourceWidth >= sourceHeight && sourceWidth > ThumbnailMaxEdge)
+        {
+            image.DecodePixelWidth = ThumbnailMaxEdge;
+        }
+        else if (sourceHeight > sourceWidth && sourceHeight > ThumbnailMaxEdge)
+        {
+            image.DecodePixelHeight = ThumbnailMaxEdge;
+        }
+
+        image.EndInit();
+        image.Freeze();
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(image));
+
+        using var buffer = new MemoryStream();
+        encoder.Save(buffer);
+        return buffer.ToArray();
     }
 }

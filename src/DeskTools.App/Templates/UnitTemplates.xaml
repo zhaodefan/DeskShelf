@@ -1,0 +1,236 @@
+<!--
+  三类 unit 的卡片外壳与内容模板。
+  设计要点：
+  1. 卡片外壳（边框、选中态、悬停小标）只写一次（UnitCardStyle），
+     三类 unit 的具体内容用 DataTemplate 注入 —— 新增 unit 类型只需写内容模板；
+  2. 小标的可见性由能力声明 UnitCapabilities 驱动，不存在任何按类型分支的判断；
+  3. 悬停/选中态用触发器，扁平风格不做缩放与阴影；
+  4. 模板键名与 Application/Catalog/UnitCatalog.cs 中的 ViewKey 严格一致：
+     新增一种 unit 类型 = 领域类型 + Catalog 登记 + 持久化映射 + 本文件新增同名 DataTemplate。
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:conv="clr-namespace:DeskTools.App.Converters"
+                    xmlns:ctl="clr-namespace:DeskTools.App.Controls"
+                    xmlns:vm="clr-namespace:DeskTools.App.ViewModels"
+                    xmlns:units="clr-namespace:DeskTools.App.Views.Units"
+                    xmlns:tpl="clr-namespace:DeskTools.App.Templates">
+
+  <!--
+    注意：这里不合并令牌字典。
+    原因：App.Resources.MergedDictionaries 的顺序就是资源查找优先级 —— 合并进来的
+    Tokens.*.xaml 会排在最后并覆盖 App 层已替换的主题字典，导致切换主题失效。
+    控件样式与图标外观在本字典内可直接解析（合并字典中的资源也会被查找），
+    因此只需保证 App.xaml 里 Icons → Controls → UnitTemplates 的顺序即可。
+  -->
+  <conv:BooleanToVisibilityConverter x:Key="Converter.BoolToVisibility" />
+
+  <!--#region 卡片外壳 -->
+  <Style x:Key="UnitCardStyle" TargetType="units:UnitCard">
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="units:UnitCard">
+          <Border x:Name="Root"
+                  Background="{DynamicResource Brush.Surface}"
+                  BorderBrush="{DynamicResource Brush.Border}"
+                  BorderThickness="1"
+                  CornerRadius="{DynamicResource Radius.Card}"
+                  SnapsToDevicePixels="True">
+            <Grid>
+              <!-- 内容区：由 DataTemplate 注入 -->
+              <ContentPresenter x:Name="Content"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Margin="9,7" />
+
+              <!-- 右上角悬停小标 -->
+              <StackPanel x:Name="Actions"
+                          Orientation="Horizontal"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Top"
+                          Margin="0,3,3,0"
+                          Opacity="0"
+                          IsHitTestVisible="False">
+                <Button x:Name="EditButton"
+                        Style="{StaticResource IconButton.Card}"
+                        Command="{Binding DataContext.ActivateUnitCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="{Binding}"
+                        ToolTip="编辑">
+                  <ctl:Icon Geometry="{StaticResource Icon.Edit}" Size="14" />
+                </Button>
+                <Button x:Name="CopyButton"
+                        Style="{StaticResource IconButton.Card}"
+                        Command="{Binding DataContext.CopyUnitCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="{Binding}"
+                        ToolTip="复制">
+                  <ctl:Icon Geometry="{StaticResource Icon.Copy}" Size="14" />
+                </Button>
+                <Button x:Name="OpenButton"
+                        Style="{StaticResource IconButton.Card}"
+                        Command="{Binding DataContext.ActivateUnitCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="{Binding}"
+                        ToolTip="打开">
+                  <ctl:Icon Geometry="{StaticResource Icon.External}" Size="14" />
+                </Button>
+                <Button x:Name="RemoveButton"
+                        Style="{StaticResource IconButton.Card.Danger}"
+                        Command="{Binding DataContext.RemoveUnitCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="{Binding}"
+                        ToolTip="移除">
+                  <ctl:Icon Geometry="{StaticResource Icon.Close}" Size="14" />
+                </Button>
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.Surface.Hover}" />
+              <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Border.Strong}" />
+              <Setter TargetName="Actions" Property="Opacity" Value="1" />
+              <Setter TargetName="Actions" Property="IsHitTestVisible" Value="True" />
+            </Trigger>
+
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+              <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.Accent.Subtle}" />
+              <Setter TargetName="Actions" Property="Opacity" Value="1" />
+              <Setter TargetName="Actions" Property="IsHitTestVisible" Value="True" />
+            </Trigger>
+
+            <!-- 编辑态：小标让位给文本框 -->
+            <Trigger Property="IsEditing" Value="True">
+              <Setter TargetName="Actions" Property="Opacity" Value="0" />
+              <Setter TargetName="Actions" Property="IsHitTestVisible" Value="False" />
+              <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+              <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.Surface}" />
+            </Trigger>
+
+            <!-- 能力声明为 false 的动作直接隐藏（而非置灰），保持界面干净 -->
+            <DataTrigger Binding="{Binding Capabilities.CanEditText}" Value="False">
+              <Setter TargetName="EditButton" Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Capabilities.CanCopyToClipboard}" Value="False">
+              <Setter TargetName="CopyButton" Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Capabilities.OpenBehavior}" Value="None">
+              <Setter TargetName="OpenButton" Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+  <!--#endregion -->
+
+  <!--#region 模板选择器：按 UnitCatalog.ViewKey 分派，新增类型无需改代码 -->
+  <tpl:UnitTemplateSelector x:Key="Selector.UnitTemplate" FallbackKey="View.Unit.Unknown" />
+  <!--#endregion -->
+
+  <!--#region 卡片容器：卡片外壳 + 按 ViewKey 选择的内容模板 -->
+  <DataTemplate x:Key="View.Unit.Card" DataType="{x:Type vm:UnitViewModel}">
+    <units:UnitCard
+        Margin="0,0,0,8"
+        Style="{StaticResource UnitCardStyle}"
+        IsSelected="{Binding IsSelected, Mode=OneWay}"
+        IsEditing="{Binding IsEditing, Mode=OneWay}">
+      <ContentControl Content="{Binding}"
+                      ContentTemplateSelector="{StaticResource Selector.UnitTemplate}"
+                      Focusable="False" />
+    </units:UnitCard>
+  </DataTemplate>
+  <!--#endregion -->
+
+  <!--#region 内容模板：文本（ViewKey = View.Unit.Text） -->
+  <DataTemplate x:Key="View.Unit.Text" DataType="{x:Type vm:UnitViewModel}">
+    <Grid>
+      <TextBlock x:Name="Display"
+                 Style="{StaticResource Text.Body}"
+                 Text="{Binding Text}"
+                 TextTrimming="CharacterEllipsis"
+                 MaxHeight="140" />
+      <TextBox x:Name="Editor"
+               Text="{Binding Text, Mode=OneWay}"
+               AcceptsReturn="True"
+               TextWrapping="Wrap"
+               MaxHeight="240"
+               VerticalScrollBarVisibility="Auto"
+               Visibility="Collapsed"
+               BorderThickness="0"
+               Background="Transparent"
+               Padding="0"
+               FontFamily="{DynamicResource Font.Ui}"
+               FontSize="{DynamicResource Font.Size.Body}"
+               Foreground="{DynamicResource Brush.Text.Primary}" />
+    </Grid>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsEditing}" Value="True">
+        <Setter TargetName="Display" Property="Visibility" Value="Collapsed" />
+        <Setter TargetName="Editor" Property="Visibility" Value="Visible" />
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+  <!--#endregion -->
+
+  <!--#region 内容模板：图片（ViewKey = View.Unit.Image） -->
+  <DataTemplate x:Key="View.Unit.Image" DataType="{x:Type vm:UnitViewModel}">
+    <StackPanel>
+      <Border Background="{DynamicResource Brush.Surface.Pressed}"
+              CornerRadius="{DynamicResource Radius.Button}"
+              MinHeight="56"
+              MinWidth="120"
+              HorizontalAlignment="Stretch">
+        <Image Source="{Binding Thumbnail}"
+               Stretch="Uniform"
+               StretchDirection="DownOnly"
+               MaxHeight="220"
+               SnapsToDevicePixels="True" />
+      </Border>
+      <TextBlock Style="{StaticResource Text.Caption}"
+                 Text="{Binding ImageMeta}"
+                 Margin="0,6,0,0"
+                 HorizontalAlignment="Left" />
+    </StackPanel>
+  </DataTemplate>
+  <!--#endregion -->
+
+  <!--#region 内容模板：文件夹（ViewKey = View.Unit.Folder） -->
+  <DataTemplate x:Key="View.Unit.Folder" DataType="{x:Type vm:UnitViewModel}">
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+
+      <ctl:Icon Grid.Column="0"
+                Geometry="{StaticResource Icon.Folder}"
+                Style="{StaticResource Icon.Filled}"
+                Foreground="{DynamicResource Brush.Accent}"
+                Size="16"
+                VerticalAlignment="Top"
+                Margin="0,2,8,0" />
+
+      <StackPanel Grid.Column="1">
+        <TextBlock Style="{StaticResource Text.Body}"
+                   Text="{Binding FolderName}"
+                   TextTrimming="CharacterEllipsis"
+                   TextWrapping="NoWrap"
+                   FontWeight="SemiBold" />
+        <TextBlock Style="{StaticResource Text.Caption}"
+                   Text="{Binding FolderPath}"
+                   Margin="0,3,0,0"
+                   ToolTip="{Binding FolderPath}" />
+      </StackPanel>
+    </Grid>
+  </DataTemplate>
+  <!--#endregion -->
+
+  <!--#region 兜底模板：未注册的 unit 类型不至于让界面崩溃 -->
+  <DataTemplate x:Key="View.Unit.Unknown" DataType="{x:Type vm:UnitViewModel}">
+    <TextBlock Style="{StaticResource Text.Secondary}" Text="未知类型的内容" />
+  </DataTemplate>
+  <!--#endregion -->
+
+</ResourceDictionary>
