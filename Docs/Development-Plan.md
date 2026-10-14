@@ -362,7 +362,7 @@ public sealed class FolderUnit : ShelfUnit { public string Path { get; } }
 | 项 | 说明 |
 | --- | --- |
 | 拖拽排序与插入指示线 | 领域层已支持 `Move` / `Insert`，UI 侧尚未接线 |
-| 发布打包 | `dotnet publish` 单文件 + 可选 Inno Setup 安装包 |
+| ~~发布打包~~ | ✅ 已完成：`tools\Build-Release.ps1` 一键产出单文件 + 便携 zip + Inno Setup 安装包；已发布 v1.0.0 到 GitHub Releases |
 | 存储清理 | 未引用图片的 GC 清理（当前删除 unit 不会删除磁盘图片，等待撤销窗口与引用计数一起做） |
 | 面板密度偏好 | 卡片间距 / 字号尚未做成设置项（当前靠拖拽改变面板尺寸） |
 | 补充单测 | `JsonShelfStore` 往返、缩略图管线 |
@@ -473,3 +473,28 @@ Windows 的 OLE 拖放协议里，一次拖拽必须由**拖源**主动发起：
   1. **拖数据**：把文件夹 / 文件**从列表里**拖进来（已验证可用，且拖文件会存其所在目录）；
   2. **主动查询**：应用自己去问系统「有哪些资源管理器窗口」（曾用 Shell COM 实现，因多窗口时无法确定目标而撤销）。
 - 因此「保存当前正在浏览的目录」这一诉求，目前最稳的做法仍是**把目录（或目录里的任意文件）从列表拖进面板**。
+
+
+---
+
+## 14. 发布记录
+
+### v1.0.0（2026-10-14）
+
+- **仓库**：https://github.com/zhaodefan/DeskTools （public）
+- **Release**：https://github.com/zhaodefan/DeskTools/releases/tag/v1.0.0
+- **产物**：
+  - `DeskTools-1.0.0-setup.exe`（64.62 MB）—— Inno Setup 安装程序，per-user 免管理员
+  - `DeskTools-1.0.0-portable-win-x64.zip`（64.02 MB）—— 便携版
+  - 自包含单文件 `DeskTools.exe`（69.35 MB，无需预装 .NET）
+
+**发布前修掉的最后一个真实缺陷**：单文件发布（`PublishSingleFile`）后 pack URI 解析失败，
+而 `H.NotifyIcon` 要求 `ImageSource` 必须带 `UriSource`，导致托盘图标抛
+`UriFormatException`。修正为：优先从程序目录旁的同名 `desktools.ico` 以文件 URI 加载，
+pack URI 作为回退；发布目标显式复制该图标（单文件发布会过滤 `None` 内容项）。
+
+**打包踩坑记录**（都写进了脚本注释）：
+1. `Compress-Archive` 对 69 MB 的已压缩单文件会产出 **0.02 MB 的假包**，改用 `ZipFile.CreateFromDirectory`；
+2. Inno Setup 6.7 起**不再随包提供简体中文**，需附带社区翻译文件（`installer\Languages\`）；
+3. `Iscc` 解析文件路径以**当前工作目录**为基准，脚本必须以 `/DRepoRoot=` 传入绝对路径；
+4. 安装器的 `AppMutex` 必须与程序内单实例 Mutex 同名，才能在安装/卸载时自动关闭运行中的实例。
