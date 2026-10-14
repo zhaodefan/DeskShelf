@@ -1,6 +1,6 @@
 # DeskTools 开发计划（Shelf / 置物架）
 
-> 状态：待评审（v0.1 草案）
+> 状态：**P0–P4 已实现并实测通过**（详见 §12 实施进度）
 > 目标平台：Windows 10 1809+ / Windows 11（当前开发机为 Windows 10 19045）
 > 一句话定义：一个常驻右下角的**置顶小面板**，把「临时要用的东西」以卡片（unit）形式暂存，随时呼出、随时取用。
 
@@ -338,4 +338,53 @@ public sealed class FolderUnit : ShelfUnit { public string Path { get; } }
 
 > 以上 12 项在 P0 起生效；如需调整，改动成本在 P3 之前都很低，P4 之后（逻辑管线与持久化落地）再改动会牵动多个项目。
 
-**进入 P0 前唯一仍开放的问题**：内核数据结构（`ShelfUnit` 的能力表达）用「`UnitKind` 枚举 + 注册表」还是「完全开放的 string kind + 插件发现」？建议前者——枚举够用、可编译期查错，且真正开放的那一天只需在 `UnitCatalog` 换成反射发现即可，不影响已实现类型。
+**进入 P0 前唯一仍开放的问题**：内核数据结构（`ShelfUnit` 的能力表达）用「`UnitKind` 枚举 + 注册表」还是「完全开放的 string kind + 插件发现」？—— **已决策：采用封闭枚举 + 注册表**，并已实现。
+
+---
+
+## 12. 实施进度
+
+### 已完成（P0–P4）
+
+| 阶段 | 状态 | 实际交付 |
+| --- | --- | --- |
+| P0 骨架 | ✅ | `DeskTools.slnx` + 4 工程 + DI 组合根 + 文件日志 + 单实例互斥 + `Directory.Build.props` 统一告警即失败 |
+| P1 UI 外壳 | ✅ | 设计令牌双主题、控件样式、无边框置顶窗口、36px 可拖拽顶栏、滚动面板、空态、消息条、缩放热区（Win32 `WM_NCHITTEST`） |
+| P2 UI 卡片 | ✅ | 三类卡片模板 + 悬停小标 + 选中/编辑态 + `UnitTemplateSelector`（按 `ViewKey` 分派，新增类型零改动） |
+| P3 UI 接线 | ✅ | `PanelViewModel` / `UnitViewModel` 全套命令、多选（Ctrl/Shift）、行内编辑提交、右键菜单数据 |
+| P4 逻辑管线 | ✅ | `RawContent` + `UnitContentFactory` + `ShelfService`、真实剪贴板（重试 + HTML 降级）、拖拽解析、图片哈希落盘与缩略图 |
+| P5 系统集成 | ✅ | `Alt+X` 全局热键（含占用提示）、托盘图标与菜单、单实例、开机自启服务（默认关） |
+| P6 持久化 | ✅ | `shelf.json` / `settings.json` 原子写、防抖保存、损坏备份、窗口位置记忆与拔屏回退 |
+| P8 测试 | ✅（部分） | 41 个单测（Domain 集合语义、Catalog 注册完整性、多选复制语义、撤销精确还原、设置校验、HTML 降级） |
+
+### 尚未完成（P7）
+
+| 项 | 说明 |
+| --- | --- |
+| 设置界面 | 当前顶栏「设置」按钮打开数据目录作为降级；需要真正的设置窗口（改热键、开关自启、主题强制、缩略图开关） |
+| 拖拽排序与插入指示线 | 领域层已支持 `Move` / `Insert`，UI 侧尚未接线 |
+| 单元测试补充 | `PanelViewModel` 命令级测试、`JsonShelfStore` 往返测试、缩略图管线测试 |
+| 发布打包 | `dotnet publish` 单文件 + 可选 Inno Setup 安装包 |
+| 存储清理 | 未引用图片的 GC 清理（当前删除 unit 不会删除磁盘图片，等待撤销窗口与引用计数一起做） |
+
+### 实施中修正的设计细节（与初版计划的差异）
+
+1. **`Alt+X` 热键**：`Alt+字母` 属菜单助记符空间，已加入手工冲突检测清单（画图/写字板/Excel/浏览器前台）。
+2. **卡片外壳抽成 `UnitCard` 控件**：初版打算用 `ContentPresenter` 承载模板，但 `ContentPresenter` 不能定义 `ControlTemplate`；改为自定义 `ContentControl` 派生控件，三类卡片共用一份外壳。
+3. **新增 `ThumbnailLoadScheduler`**：图片解码必须异步，但逐张 `Task.Run` 会产生解码风暴；改为单通道 + 卡片间让步。
+4. **新增 `ImageBytesCache`（LRU）**：避免滚动时反复读盘与重复解码。
+5. **新增 `HtmlTextConverter`（位于 Application 层）**：浏览器拖拽常只提供 `HTML Format`，必须做 HTML→纯文本降级，这是平台无关的纯文本处理，因此不在 Infrastructure。
+6. **剪贴板与拖拽共用一个 `DataObjectReader`**：避免两条通道的格式优先级出现差异（否则会出现「复制能存、拖动存不进去」）。
+
+### 实测验证方式（不依赖人工点击）
+
+自动化环境下通过以下手段完成了真实链路验证：
+
+- 启动真实进程并**枚举窗口**确认面板出现、位置为「工作区右下角 - 16px」；
+- 用 `SendKeys` 发送真实 `Ctrl+V` / `Delete` / `Ctrl+Z`，并核对 `shelf.json` 与日志；
+- 真实截图 + 视觉走查（浅色 / 深色各一轮），据此修复了 4 个真实缺陷：
+  ① 主题切换被 `UnitTemplates.xaml` 中重复合并的令牌字典覆盖；
+  ② `H.NotifyIcon` 要求 `BitmapImage.UriSource`，从内存流构造的帧会导致托盘图标加载失败；
+  ③ 缩略图解码与编码跨线程，触发 `BitmapSource` 线程亲和性异常（真实 bug，非测试代码问题）；
+  ④ 悬停小标叠在亮色图片上几乎不可见；
+- `DESKTOOLS_SEED_SAMPLE=1` 注入样例数据，用于覆盖「图片 / 文件夹」两类只能由拖拽产生的卡片。
