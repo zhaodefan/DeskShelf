@@ -41,6 +41,9 @@ public partial class PanelWindow : Window
 
     private bool _isShuttingDown;
 
+    /// <summary>DragOver 会被高频调用，用它保证「拖拽进入」日志每次拖拽只写一条。</summary>
+    private bool _dragOverLogged;
+
     /// <summary>创建面板窗口。</summary>
     public PanelWindow(
         PanelViewModel viewModel,
@@ -282,19 +285,35 @@ public partial class PanelWindow : Window
     private void OnDragOver(object sender, DragEventArgs e)
     {
         // 只做「能否接收」的探测，不做解析（解析成本高，且 DragOver 会被高频调用）
-        e.Effects = e.Data is not null && DataObjectReader.TryReadPayload(e.Data) is not null
-            ? DragDropEffects.Copy
-            : DragDropEffects.None;
+        var payload = e.Data is null ? null : DataObjectReader.TryReadPayload(e.Data);
+        e.Effects = payload is not null ? DragDropEffects.Copy : DragDropEffects.None;
+
+        // 诊断：拖拽是否真的到达了面板，以及携带的是哪种格式（排查「拖不动」的关键依据）
+        if (payload is not null && !_dragOverLogged)
+        {
+            _dragOverLogged = true;
+            _logger.LogInformation("拖拽已进入面板：{Summary}", Describe(payload));
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnDragLeave(object sender, DragEventArgs e)
+    {
+        _dragOverLogged = false;
         e.Handled = true;
     }
 
     private async void OnDrop(object sender, DragEventArgs e)
     {
         e.Handled = true;
+        _dragOverLogged = false;
 
         try
         {
             var payload = DataObjectReader.TryReadPayload(e.Data);
+            _logger.LogInformation("收到拖拽落盘：{Summary}", payload is null ? "无法读取任何格式" : Describe(payload));
+
             var content = DataObjectReader.ToRawContent(payload, UnitOrigin.DragDrop);
             if (content is null)
             {
@@ -309,6 +328,35 @@ public partial class PanelWindow : Window
             _logger.LogError(ex, "处理拖入内容失败。");
             _viewModel.ShowStatus("处理拖入内容失败，详见日志。");
         }
+    }
+
+    /// <summary>把拖拽载荷概括成一行日志文本（含可用的全部格式，便于定位来源差异）。</summary>
+    private static string Describe(DataObjectPayload payload)
+    {
+        var parts = new List<string>();
+        if (payload.FilePaths is { Count: > 0 } paths)
+        {
+            var preview = paths.Count == 1 ? paths[0] : $"{paths[0]} 等 {paths.Count} 项";
+            parts.Add($"Files=[{preview}]");
+        }
+
+        if (payload.ImageBytes is { Length: > 0 } image)
+        {
+            parts.Add($"Bitmap={image.Length}B");
+        }
+
+        if (payload.Text is { Length: > 0 } text)
+        {
+            var preview = text.Length > 80 ? text[..80] + "…" : text;
+            parts.Add($"Text=[{preview.ReplaceLineEndings(" ")}]");
+        }
+
+        if (payload.Html is { Length: > 0 } html)
+        {
+            parts.Add($"Html={html.Length}B");
+        }
+
+        return parts.Count == 0 ? "（无可识别格式）" : string.Join(" / ", parts);
     }
 
     // ————————————————————————— 键盘与鼠标 —————————————————————————

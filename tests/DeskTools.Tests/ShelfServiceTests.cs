@@ -86,6 +86,54 @@ public sealed class ShelfServiceTests
     }
 
     [Fact]
+    public async Task Ingest_NonImageFile_StoresItsParentFolder()
+    {
+        // 用户拖一个普通文件进来时，意图通常是「我要经常回到这个目录」
+        var ctx = new ShelfTestContext();
+        var folder = Path.Combine(Path.GetTempPath(), "desktools-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var file = Path.Combine(folder, "notes.txt");
+        await File.WriteAllTextAsync(file, "hello");
+
+        try
+        {
+            var result = await ctx.Service.IngestAsync(RawContent.FromPaths(new[] { file }, UnitOrigin.DragDrop));
+
+            Assert.True(result.Success);
+            var unit = Assert.IsType<FolderUnit>(Assert.Single(ctx.Shelf.Units));
+            Assert.Equal(FolderUnit.Normalize(folder), unit.Path);
+            Assert.Contains("所在目录", result.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Ingest_MultipleFilesInSameFolder_StoresFolderOnlyOnce()
+    {
+        var ctx = new ShelfTestContext();
+        var folder = Path.Combine(Path.GetTempPath(), "desktools-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var first = Path.Combine(folder, "a.txt");
+        var second = Path.Combine(folder, "b.txt");
+        await File.WriteAllTextAsync(first, "a");
+        await File.WriteAllTextAsync(second, "b");
+
+        try
+        {
+            await ctx.Service.IngestAsync(RawContent.FromPaths(new[] { first, second }, UnitOrigin.DragDrop));
+
+            Assert.Single(ctx.Shelf.Units);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Ingest_ExceedingLimit_RejectsWithMessage()
     {
         var ctx = new ShelfTestContext();
