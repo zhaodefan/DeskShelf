@@ -163,16 +163,6 @@ public sealed class FakeSystemLauncher : ISystemLauncher
         => Task.FromResult(true);
 }
 
-/// <summary>可控的资源管理器窗口来源（用于测试「抓取当前目录」）。</summary>
-public sealed class FakeExplorerFolderSource : IExplorerFolderSource
-{
-    /// <summary>预设的打开位置（顺序即优先级）。</summary>
-    public List<ExplorerWindowInfo> Locations { get; } = new();
-
-    /// <inheritdoc />
-    public IReadOnlyList<ExplorerWindowInfo> GetOpenLocations() => Locations;
-}
-
 /// <summary>测试用的服务组装器：把 <c>ShelfService</c> 与全部假实现装在一起。</summary>
 public sealed class ShelfTestContext
 {
@@ -185,7 +175,6 @@ public sealed class ShelfTestContext
         Store = new FakeShelfStore();
         Settings = new FakeSettingsStore();
         Launcher = new FakeSystemLauncher();
-        ExplorerFolders = new FakeExplorerFolderSource();
         Factory = new UnitContentFactory(Images, NullLogger<UnitContentFactory>.Instance);
         Service = new ShelfService(
             Shelf,
@@ -195,7 +184,6 @@ public sealed class ShelfTestContext
             Store,
             Settings,
             Images,
-            ExplorerFolders,
             new UndoStack(),
             NullLogger<ShelfService>.Instance);
     }
@@ -217,9 +205,6 @@ public sealed class ShelfTestContext
 
     /// <summary>假启动器。</summary>
     public FakeSystemLauncher Launcher { get; }
-
-    /// <summary>假资源管理器窗口来源。</summary>
-    public FakeExplorerFolderSource ExplorerFolders { get; }
 
     /// <summary>真实的内容工厂（配合假图片存储）。</summary>
     public UnitContentFactory Factory { get; }

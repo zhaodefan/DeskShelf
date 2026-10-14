@@ -54,7 +54,6 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ISettingsStore, JsonSettingsStore>();
         services.AddSingleton<IDisplayService, DisplayService>();
         services.AddSingleton<IHotkeyService, GlobalHotkeyService>();
-        services.AddSingleton<IExplorerFolderSource, ShellExplorerFolderSource>();
         services.AddSingleton<AutoStartService>();
         services.AddSingleton<IImageBytesSource, ImageBytesSource>();
         services.AddSingleton(sp => new DebouncedSaver(

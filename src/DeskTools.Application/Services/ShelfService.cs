@@ -29,7 +29,6 @@ public sealed class ShelfService
     private readonly IShelfStore _store;
     private readonly ISettingsStore _settingsStore;
     private readonly IImageStore _imageStore;
-    private readonly IExplorerFolderSource _explorerFolders;
     private readonly UndoStack _undoStack;
     private readonly ILogger<ShelfService> _logger;
 
@@ -42,7 +41,6 @@ public sealed class ShelfService
         IShelfStore store,
         ISettingsStore settingsStore,
         IImageStore imageStore,
-        IExplorerFolderSource explorerFolders,
         UndoStack undoStack,
         ILogger<ShelfService> logger)
     {
@@ -53,7 +51,6 @@ public sealed class ShelfService
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         _imageStore = imageStore ?? throw new ArgumentNullException(nameof(imageStore));
-        _explorerFolders = explorerFolders ?? throw new ArgumentNullException(nameof(explorerFolders));
         _undoStack = undoStack ?? throw new ArgumentNullException(nameof(undoStack));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -330,83 +327,6 @@ public sealed class ShelfService
     {
         ArgumentNullException.ThrowIfNull(unit);
         return _launcher.RevealInExplorerAsync(unit, cancellationToken);
-    }
-
-    /// <summary>
-    /// 把「当前正在浏览的资源管理器目录」存为文件夹 unit。
-    /// </summary>
-    /// <remarks>
-    /// 这是「拖地址栏 / 拖标题栏」的可靠替代：后两者是否可拖由资源管理器决定，
-    /// 应用侧无法保证；而读取系统记录的窗口位置在任何版本上都可用。
-    /// </remarks>
-    public async Task<IngestResult> CaptureExplorerFolderAsync(CancellationToken cancellationToken = default)
-    {
-        IReadOnlyList<ExplorerWindowInfo> locations;
-        try
-        {
-            locations = _explorerFolders.GetOpenLocations();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "读取资源管理器窗口位置失败。");
-            return IngestResult.Nothing("读取资源管理器窗口失败。");
-        }
-
-        if (locations.Count == 0)
-        {
-            return IngestResult.Nothing("没有找到已打开的资源管理器窗口。");
-        }
-
-        var paths = new List<string>();
-        foreach (var location in locations)
-        {
-            if (TryConvertToLocalPath(location.LocationUrl) is { } path)
-            {
-                paths.Add(path);
-            }
-        }
-
-        if (paths.Count == 0)
-        {
-            return IngestResult.Nothing("当前资源管理器位置不是本地文件夹（例如「此电脑」或网络位置）。");
-        }
-
-        // 只取最近激活的那一个，避免用户开了一堆窗口时被灌入大量 unit
-        var target = paths[0];
-        var result = await IngestAsync(RawContent.FromPaths(new[] { target }, UnitOrigin.DragDrop), null, cancellationToken)
-            .ConfigureAwait(true);
-
-        return result.Success
-            ? result with { Message = $"已存放资源管理器当前目录：{target}" }
-            : result;
-    }
-
-    /// <summary>
-    /// 把 <c>file:///C:/x/y</c> 形式的 URL 转成本地路径；非本地位置（网络位置、虚拟文件夹）返回 <c>null</c>。
-    /// </summary>
-    public static string? TryConvertToLocalPath(string? locationUrl)
-    {
-        if (string.IsNullOrWhiteSpace(locationUrl))
-        {
-            return null;
-        }
-
-        const string FileScheme = "file:///";
-        if (!locationUrl.StartsWith(FileScheme, StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        var raw = locationUrl[FileScheme.Length..];
-        var decoded = Uri.UnescapeDataString(raw).Replace('/', Path.DirectorySeparatorChar);
-
-        // 盘符路径会多出一个前导分隔符（/C:/x → C:/x）
-        if (decoded.Length > 2 && decoded[0] == Path.DirectorySeparatorChar && decoded[2] == ':')
-        {
-            decoded = decoded[1..];
-        }
-
-        return decoded.Length == 0 ? null : decoded;
     }
 
     private async Task<RawContent> ToContentAsync(ShelfUnit unit, CancellationToken cancellationToken)
