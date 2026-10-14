@@ -110,14 +110,6 @@
                     ToolTip="设置">
               <ctl:Icon Geometry="{StaticResource Icon.Settings}" Size="14" />
             </Button>
-
-            <!-- 关闭 -->
-            <Button x:Name="CloseButton"
-                    Style="{StaticResource IconButton.Close}"
-                    Click="OnCloseClick"
-                    ToolTip="关闭">
-              <ctl:Icon Geometry="{StaticResource Icon.Close}" Size="14" />
-            </Button>
           </StackPanel>
         </Grid>
       </Border>

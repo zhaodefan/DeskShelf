@@ -39,7 +39,7 @@ public partial class PanelWindow : Window
     private readonly ILogger<PanelWindow> _logger;
     private readonly string _settingsDirectory;
 
-    private bool _isHiddenByUser;
+    private bool _isShuttingDown;
 
     /// <summary>创建面板窗口。</summary>
     public PanelWindow(
@@ -96,8 +96,6 @@ public partial class PanelWindow : Window
     /// <summary>显示面板并聚焦。</summary>
     public void ShowPanel()
     {
-        _isHiddenByUser = false;
-
         if (!IsVisible)
         {
             Show();
@@ -114,8 +112,16 @@ public partial class PanelWindow : Window
     {
         _viewModel.DismissStatus();
         SavePlacement();
-        _isHiddenByUser = true;
         Hide();
+    }
+
+    /// <summary>
+    /// 由托盘「退出」调用：放行 <see cref="Window.Close"/> 的取消逻辑，再执行关闭。
+    /// </summary>
+    public void PrepareForShutdown()
+    {
+        _isShuttingDown = true;
+        SavePlacement();
     }
 
     /// <summary>退出应用前持久化界面状态。</summary>
@@ -141,14 +147,17 @@ public partial class PanelWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        // 顶栏关闭按钮 = 隐藏；真正退出由 TrayIcon / 显式 Shutdown 完成
-        if (_isHiddenByUser || WpfApp.Current.ShutdownMode == ShutdownMode.OnExplicitShutdown)
+        // 顶栏已不再提供关闭按钮，"退出"的唯一正规路径是托盘右键菜单。
+        // 因此除「应用正在退出」外的任何关闭请求（Esc、Alt+F4、系统菜单）都只收起面板，
+        // 保证托盘图标与全局热键继续可用 —— 这正是「固定最小化」的语义。
+        if (_isShuttingDown)
         {
             return;
         }
 
         e.Cancel = true;
         HidePanel();
+        _logger.LogDebug("面板已收起（可从托盘图标或 {Gesture} 再次呼出）。", _settings.Current.Hotkey.DisplayText);
     }
 
     private void OnDeactivated(object? sender, EventArgs e)
@@ -441,12 +450,6 @@ public partial class PanelWindow : Window
     private void OnMinimizeClick(object sender, RoutedEventArgs e) => HidePanel();
 
     private void OnSettingsClick(object sender, RoutedEventArgs e) => _ = OpenSettingsFolderAsync();
-
-    private void OnCloseClick(object sender, RoutedEventArgs e)
-    {
-        _logger.LogInformation("用户通过顶栏关闭按钮退出应用。");
-        WpfApp.Current.Shutdown();
-    }
 
     private async Task OpenSettingsFolderAsync()
     {
