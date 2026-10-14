@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>DeskTools.Application</RootNamespace>
+    <AssemblyName>DeskTools.Application</AssemblyName>
+    <!-- 用例编排层：同样与 UI 无关，只依赖 Domain 抽象 -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DeskTools.Domain\DeskTools.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 仅日志抽象：用例层不引入 DI 容器与任何 Windows API -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>

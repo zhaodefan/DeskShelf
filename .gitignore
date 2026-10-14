@@ -1,0 +1,18 @@
+# 构建产物
+artifacts/
+bin/
+obj/
+
+# 用户级 IDE 配置
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# 发布产物
+publish/
+*.nupkg
+
+# 本地数据（运行期会写到 %APPDATA%\DeskTools，此处仅防误提交）
+*.log

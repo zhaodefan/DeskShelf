@@ -1,0 +1,27 @@
+<Project>
+
+  <!--
+    全局工程约定（P0）。
+    约束：Domain / Application 永不引用任何 UI 或 Windows 专有 API，
+    靠「项目引用方向」+ 代码评审保证，见 Docs/Development-Plan.md §3。
+  -->
+  <PropertyGroup>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 编译告警即失败，但 IDE 风格建议（IDE****）只提示不阻断 -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IDE0005;IDE0011;IDE0040;IDE0055;IDE0090;IDE0161;IDE0300;IDE0301;IDE0305</WarningsNotAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <!-- 公共成员强制 XML 文档：Domain/Application 是长期资产，接口即契约 -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NeutralLanguage>zh-Hans</NeutralLanguage>
+    <Company>DeskTools</Company>
+    <Product>DeskTools</Product>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <DebugType>embedded</DebugType>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+</Project>
