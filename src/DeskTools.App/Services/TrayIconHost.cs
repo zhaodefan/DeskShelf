@@ -19,9 +19,6 @@ namespace DeskTools.App.Services;
 /// </summary>
 public sealed class TrayIconHost : IDisposable
 {
-    /// <summary>托盘图标资源 URI（必须用 URI 加载，见 <see cref="ApplyIconSource"/> 的说明）。</summary>
-    private const string IconResourceUri = "pack://application:,,,/DeskTools;component/Assets/desktools.ico";
-
     private readonly ISettingsStore _settings;
     private readonly ILogger<TrayIconHost> _logger;
 
@@ -68,9 +65,14 @@ public sealed class TrayIconHost : IDisposable
 
     /// <summary>
     /// 设置托盘图标位图。
-    /// 注意：H.NotifyIcon 在转换 <see cref="ImageSource"/> 时会读取 <c>BitmapImage.UriSource</c>，
-    /// 因此这里必须用<b>资源 URI</b> 加载（从内存流构造的帧没有 UriSource，会抛 UriFormatException）。
     /// </summary>
+    /// <remarks>
+    /// 硬约束：H.NotifyIcon 在把 <see cref="ImageSource"/> 转成图标时会读取
+    /// <c>BitmapImage.UriSource</c>（<c>ImageExtensions.Wpf.cs</c>），为 <c>null</c> 时抛
+    /// <c>UriFormatException</c>。因此这里只接受<b>通过 URI 加载</b>的位图，
+    /// 并按「发布目录旁的同名 .ico → pack URI」的顺序探测；
+    /// 内存流/内嵌资源构造的帧没有 UriSource，绝不采用。
+    /// </remarks>
     private void ApplyIconSource()
     {
         if (_icon is null)
@@ -78,22 +80,75 @@ public sealed class TrayIconHost : IDisposable
             return;
         }
 
+        var image = TryLoadFromFile() ?? TryLoadFromPackUri();
+        if (image is null)
+        {
+            _logger.LogWarning("托盘图标不可用，将使用系统默认图标。");
+            return;
+        }
+
+        _icon.IconSource = image;
+        _logger.LogDebug("托盘图标已设置：{Source}", image.UriSource);
+    }
+
+    /// <summary>优先从可执行文件所在目录读取同名的 desktools.ico（发布包会带上它）。</summary>
+    private BitmapImage? TryLoadFromFile()
+    {
         try
         {
+            var directory = Path.GetDirectoryName(Environment.ProcessPath);
+            if (string.IsNullOrEmpty(directory))
+            {
+                return null;
+            }
+
+            var path = Path.Combine(directory, "desktools.ico");
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
             var image = new BitmapImage();
             image.BeginInit();
-            image.UriSource = new Uri(IconResourceUri, UriKind.Absolute);
+            image.UriSource = new Uri(path, UriKind.Absolute);
             image.CacheOption = BitmapCacheOption.OnLoad;
             image.EndInit();
             image.Freeze();
-
-            _icon.IconSource = image;
+            return image;
         }
         catch (Exception ex)
         {
-            // 图标缺失不影响功能：托盘显示默认图标即可
-            _logger.LogWarning(ex, "加载托盘图标失败，将使用系统默认图标。");
+            _logger.LogDebug(ex, "从程序目录加载托盘图标失败。");
+            return null;
         }
+    }
+
+    /// <summary>回退：从程序集资源（pack URI）加载，适用于常规构建形态。</summary>
+    private BitmapImage? TryLoadFromPackUri()
+    {
+        foreach (var uri in new[]
+                 {
+                     "pack://application:,,,/DeskTools;component/Assets/desktools.ico",
+                     "pack://application:,,,/Assets/desktools.ico",
+                 })
+        {
+            try
+            {
+                var image = new BitmapImage();
+                image.BeginInit();
+                image.UriSource = new Uri(uri, UriKind.Absolute);
+                image.CacheOption = BitmapCacheOption.OnLoad;
+                image.EndInit();
+                image.Freeze();
+                return image;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "pack URI 加载托盘图标失败：{Uri}", uri);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>在托盘显示一条警告气泡（例如热键注册失败）。</summary>
@@ -185,29 +240,5 @@ public sealed class TrayIconHost : IDisposable
         // 先放行窗口的「关闭即收起」拦截，再走正常退出流程（会保存内容与窗口位置）
         _panel?.PrepareForShutdown();
         _app?.Shutdown();
-    }
-
-    /// <summary>从嵌入资源加载托盘图标，并缩放为托盘所需的 16px 尺寸。</summary>
-    private static ImageSource? LoadTrayIcon()
-    {
-        try
-        {
-            var decoder = new IconBitmapDecoder(
-                new Uri(IconResourceUri, UriKind.Absolute),
-                BitmapCreateOptions.None,
-                BitmapCacheOption.OnLoad);
-
-            // 选最接近托盘尺寸的一帧，避免系统缩放导致模糊
-            var frame = decoder.Frames
-                .OrderBy(f => Math.Abs(f.PixelWidth - 16))
-                .First();
-
-            frame.Freeze();
-            return frame;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
     }
 }

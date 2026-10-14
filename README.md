@@ -4,25 +4,36 @@
 随时用快捷键呼出取用，不用在资源管理器里反复翻找。
 
 - 目标框架：`.NET 8 (net8.0-windows)` + `WPF`
-- 平台：Windows 10 1809+ / Windows 11
-- 当前进度：**P4 已完成**（UI 外壳、三类卡片、面板窗口、托盘、Alt+X 全局热键、持久化、缩略图管线、41 个单测）
+- 平台：Windows 10 1809+ / Windows 11（64 位）
+- 当前版本：**v1.0.0**（功能完整，含安装包）
 
 ---
 
-## 快速开始
+## 下载安装
+
+到 [**Releases**](https://github.com/zhaodefan/DeskTools/releases) 页面下载：
+
+| 文件 | 说明 |
+| --- | --- |
+| `DeskTools-<版本>-setup.exe` | 安装程序。**免管理员权限**，自动创建开始菜单 / 桌面快捷方式，可选开机自启 |
+| `DeskTools-<版本>-portable-win-x64.zip` | 便携版。解压即用，不写注册表 |
+
+自包含单文件，**无需预先安装 .NET 运行时**。
+
+## 从源码构建
 
 ```powershell
-# 构建全部工程
+# 构建 / 运行 / 测试
 dotnet build .\DeskTools.slnx
-
-# 运行
 dotnet run --project .\src\DeskTools.App\DeskTools.App.csproj
+dotnet test  .\tests\DeskTools.Tests\DeskTools.Tests.csproj
 
-# 跑单测（Domain / Application / Infrastructure 逻辑层）
-dotnet test .\tests\DeskTools.Tests\DeskTools.Tests.csproj
+# 一键出发布产物（单文件 + 便携 zip + 安装程序）
+# 生成安装包需要 Inno Setup：winget install --id JRSoftware.InnoSetup
+powershell -File tools\Build-Release.ps1 -Version 1.0.0
 ```
 
-> 本机 Visual Studio 未安装 WPF 项目模板，请统一使用 `dotnet` CLI 构建与运行。
+> Visual Studio 未安装 WPF 项目模板时，请统一使用 `dotnet` CLI 构建与运行。
 
 ---
 
