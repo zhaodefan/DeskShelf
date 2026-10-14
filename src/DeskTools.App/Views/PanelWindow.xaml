@@ -75,6 +75,14 @@
           </StackPanel>
 
           <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+            <!-- 抓取资源管理器当前目录（拖地址栏/标题栏不可靠，这是替代通道） -->
+            <Button x:Name="CaptureFolderButton"
+                    Style="{StaticResource IconButton}"
+                    Command="{Binding CaptureExplorerFolderCommand}"
+                    ToolTip="存放资源管理器当前目录（Ctrl+Shift+E）">
+              <ctl:Icon Geometry="{StaticResource Icon.Capture}" Size="14" />
+            </Button>
+
             <!-- 撤销 -->
             <Button Style="{StaticResource IconButton}"
                     Command="{Binding UndoCommand}"

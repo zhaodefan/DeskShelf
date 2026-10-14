@@ -119,6 +119,20 @@ public sealed partial class PanelViewModel : ObservableObject
         }).ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// 抓取「当前正在浏览的资源管理器目录」存为文件夹 unit。
+    /// 这是拖地址栏 / 拖标题栏的可靠替代通道。
+    /// </summary>
+    [RelayCommand]
+    private async Task CaptureExplorerFolderAsync()
+    {
+        await RunAsync(async () =>
+        {
+            var result = await _shelf.CaptureExplorerFolderAsync().ConfigureAwait(true);
+            ShowStatus(result.Message);
+        }).ConfigureAwait(true);
+    }
+
     /// <summary>Ctrl+C：复制选中的 unit。</summary>
     [RelayCommand]
     private async Task CopySelectionAsync()

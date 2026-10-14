@@ -120,6 +120,8 @@
   <Geometry x:Key="Icon.Empty">M2,4.5 H14 V13 H2 Z M4.5,7.5 H11.5 M4.5,10.5 H9.5</Geometry>
   <Geometry x:Key="Icon.Clear">M2.6,4.6 H13.4 M6.4,2.6 H9.6 M4.2,4.6 L4.9,13.4 H11.1 L11.8,4.6 M6.8,7 V11.4 M9.2,7 V11.4</Geometry>
   <Geometry x:Key="Icon.Tray">M2,9 H5.5 L6.5,11 H9.5 L10.5,9 H14 M3,3 H13 L14,9 V13 H2 V9 Z</Geometry>
+  <!-- 抓取资源管理器当前目录：文件夹 + 下方收纳托盘 -->
+  <Geometry x:Key="Icon.Capture">M1.6,3.2 H5.9 L7.1,4.8 H11.4 A0.8,0.8 0 0 1 12.2,5.6 V7.2 M2.4,8.4 H13.6 A0.9,0.9 0 0 1 14.5,9.3 V12.9 A0.9,0.9 0 0 1 13.6,13.8 H2.4 A0.9,0.9 0 0 1 1.5,12.9 V9.3 A0.9,0.9 0 0 1 2.4,8.4 Z</Geometry>
   <!--#endregion -->
 
 </ResourceDictionary>

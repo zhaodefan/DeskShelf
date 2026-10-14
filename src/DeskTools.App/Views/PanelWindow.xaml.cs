@@ -364,10 +364,17 @@ public partial class PanelWindow : Window
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+        var shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
         var editing = IsEditingText();
 
         switch (e.Key)
         {
+            // 抓取资源管理器当前目录（Ctrl+Shift+E）：不受编辑焦点影响，随时可用
+            case Key.E when ctrl && shift:
+                e.Handled = true;
+                _viewModel.CaptureExplorerFolderCommand.Execute(null);
+                break;
+
             case Key.V when ctrl && !editing:
                 e.Handled = true;
                 _viewModel.PasteCommand.Execute(null);
