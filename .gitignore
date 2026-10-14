@@ -2,6 +2,8 @@
 artifacts/
 bin/
 obj/
+**/obj/
+**/bin/
 
 # 用户级 IDE 配置
 .vs/
