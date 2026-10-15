@@ -66,6 +66,20 @@ public static class DeskShelfProbe
         mouse_event(0x0004, 0, 0, 0, IntPtr.Zero);
     }
 
+    /// <summary>在当前光标位置滚动鼠标滚轮（负数表示向下）。</summary>
+    public static void Scroll(int notches)
+    {
+        // MOUSEEVENTF_WHEEL = 0x0800；WHEEL_DELTA = 120
+        mouse_event(0x0800, 0, 0, unchecked((uint)(notches * 120)), IntPtr.Zero);
+    }
+
+    /// <summary>把光标移到指定坐标后滚动：ScrollViewer 只响应悬停其上的滚轮事件。</summary>
+    public static void ScrollAt(int x, int y, int notches)
+    {
+        SetCursorPos(x, y);
+        System.Threading.Thread.Sleep(150);
+        Scroll(notches);
+    }
     public static string Capture(IntPtr hwnd, string path)
     {
         RECT rect;

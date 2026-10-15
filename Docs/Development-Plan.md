@@ -530,3 +530,58 @@ pack URI 作为回退；发布目标显式复制该图标（单文件发布会�
 - 标题栏右侧顺序改为「设置 → 最小化」（最小化在最右）
 - 修复：收起面板 / 退出前自动提交正在编辑的文本（此前会丢失未提交内容）
 - 修复：所有图标按钮补 `AutomationProperties.Name`（此前屏幕阅读器无法读出按钮用途）
+---
+
+## 16. 在线更新系统（v1.2.0）
+
+### 方案选型
+
+| 方案 | 结论 |
+| --- | --- |
+| **GitHub Releases API + 官方安装包静默升级** | ✅ 采用。零服务器成本，无需签名证书体系，复用已发布的安装包 |
+| 自建更新清单服务器 | ❌ 需要额外运维与域名，对单机工具过重 |
+| Squirrel / Velopack 等更新框架 | ❌ 需要更换打包与安装体系，与现有 Inno Setup 流程冲突 |
+
+### 分层落点
+
+```
+Domain       ValueObjects/SemanticVersion.cs      版本解析与比较（+单测）
+Application  Abstractions/IReleaseSource.cs       发布信息源 + AppRelease + 失败原因
+             Abstractions/IUpdateService.cs       检查 / 下载 / 静默安装
+Infrastructure Updates/GitHubReleaseSource.cs     Releases API 调用与 JSON 解析
+             Updates/UpdateService.cs             下载完整性校验 + 启动安装程序
+App          SettingsViewModel + SettingsWindow   更新 UI；TrayIconHost 提供托盘入口
+```
+
+### 关键实现决策
+
+1. **下载完整性**：先写 `.part` 临时文件，**完整下载并核对字节数后才改名**为正式文件。
+   若中途断网，不会留下一个"看起来完整"的坏安装包。
+2. **安装参数**：`/SILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL`。
+   用 `/SILENT` 而非 `/VERYSILENT` 是刻意的 —— 保留进度窗口，用户看得见升级在进行中。
+3. **升级后重启**：`RunInstallerAsync` 等待安装程序退出（5 分钟超时），成功后才由表现层
+   关闭应用、并以 `UseShellExecute` 重新启动 `Environment.ProcessPath`（便携/安装两种形态都适用）。
+   安装失败时**不关闭应用**，把退出码显示出来。
+4. **便携版不做自动替换**：便携版无法覆盖自己正在运行的文件。此时只下载并打开所在目录，
+   界面明确提示需手动解压替换。
+5. **安装形态判定**：程序目录下存在 `unins000.exe` 即视为安装版（Inno Setup 的卸载器）。
+   这比写注册表标记更可靠，也不依赖安装器配合。
+
+### 限流处理（真实踩到）
+
+未认证的 GitHub API 限流为 **60 次/小时/IP**。本机开发时就撞上过（`HTTP 403 rate limit exceeded`，
+`X-RateLimit-Remaining: 0`）。处理方式：
+
+- 从响应头解析 `X-RateLimit-Reset` / `Retry-After`，把**具体重置时间**告诉用户
+- 设置里提供**可选的 GitHub 访问令牌**（只读即可），配额提升到 5000 次/小时
+- 令牌只存本机 `settings.json`，仅用于该请求的 `Authorization` 头
+
+### 测试策略
+
+- **103 个单元测试**：版本解析/比较（含预发布语义）、发布解析与安装包识别、
+  更新流程（可更新/最新/无限流/限流/便携版/下载失败/安装失败）全部用假实现覆盖
+- **3 个联网集成测试**（环境变量 `DESKSHELF_UPDATE_INTEGRATION=1` 门控，默认跳过）：
+  真实 API 的 JSON 契约、真实 64MB 安装包下载与字节数/MZ 头校验。
+  这层专门用来发现"GitHub 改字段名"这类单元测试发现不了的问题
+- `ShelfSettings` 的失败类型建模为 `ReleaseQueryFailure`，使"限流"与"网络错误"
+  能被分别断言 —— 否则无法测出提示文案是否可操作
