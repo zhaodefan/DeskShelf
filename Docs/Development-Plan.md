@@ -1,4 +1,4 @@
-﻿# DeskTools 开发计划（Shelf / 置物架）
+# 桌面置物架 DeskShelf 开发计划
 
 > 状态：**P0–P4 已实现并实测通过**（详见 §12 实施进度）
 > 目标平台：Windows 10 1809+ / Windows 11（当前开发机为 Windows 10 19045）
@@ -16,7 +16,7 @@
 | Visual Studio | VS2022 / VS18 已装，但 **未安装 WPF 项目模板** |
 | 构建方式 | `dotnet new wpf` + `dotnet build` 已实测**成功**（net10.0-windows，0 错误 0 警告） |
 | NuGet | nuget.org 可达（HTTP 200），可正常还原第三方包 |
-| 工作区 | `C:\project\DeskTools` 当前为空 |
+| 工作区 | `C:\project\DeskShelf` 当前为空 |
 
 > 结论：**WPF 路线零阻塞**，全程可用 CLI 构建/运行/测试，不依赖 VS 图形界面。
 
@@ -35,7 +35,7 @@
 | 全局热键 | 自建 `GlobalHotkeyService`（RegisterHotKey + 隐藏消息窗口） | 无需第三方包，行为可控 |
 | 拖拽 / 剪贴板 | 内置 WPF `DragDrop` / `Clipboard`（带重试） | 零依赖 |
 | 持久化 | **JSON（System.Text.Json）+ 图片落盘为独立 png 文件** | 实现简单、可手工排查、天然可版本化；仓储接口预留 SQLite 升级 |
-| 测试 | xUnit + FluentAssertions，`tests/DeskTools.Tests` | 逻辑层可脱离 UI 单测 |
+| 测试 | xUnit + FluentAssertions，`tests/DeskShelf.Tests` | 逻辑层可脱离 UI 单测 |
 | 打包 | `dotnet publish` self-contained 单文件 + Inno Setup（可选） | 先保证能跑，安装包放收尾阶段 |
 
 **不做的事（明确排除，避免范围膨胀）**：跨平台、云端同步、多面板、富文本编辑、OCR、AI 摘要。
@@ -47,16 +47,16 @@
 依赖方向永远是**向内**：`App → Application → Domain`，`Infrastructure` 只实现接口、不被内层引用。
 
 ```
-DeskTools.sln
+DeskShelf.sln
 ├─ src/
-│  ├─ DeskTools.Domain/            【纯逻辑】零外部依赖，无 WPF 引用
+│  ├─ DeskShelf.Domain/            【纯逻辑】零外部依赖，无 WPF 引用
 │  │   ├─ Units/                   ShelfUnit(abstract) / TextUnit / ImageUnit / FolderUnit
 │  │   │                           UnitKind / UnitCapabilities / UnitOrigin
 │  │   ├─ Shelf/                   Shelf（聚合根：有序集合 + 增删改排序 + 领域事件）
 │  │   ├─ ValueObjects/            UnitId / UnitPosition / StorageKey
 │  │   └─ RawContent.cs            归一化输入：Text / Image(bytes,w,h) / Files(paths)
 │  │
-│  ├─ DeskTools.Application/       【应用逻辑】编排用例，仍无 WPF 引用
+│  ├─ DeskShelf.Application/       【应用逻辑】编排用例，仍无 WPF 引用
 │  │   ├─ Abstractions/            IClipboardService / IUnitFactory / IShelfStore /
 │  │   │                           ISettingsStore / IHotkeyService / ISystemLauncher /
 │  │   │                           IThumbnailRenderer / IShelfFileResolver
@@ -65,7 +65,7 @@ DeskTools.sln
 │  │   ├─ Catalog/                 UnitCatalog：kind → 显示名/图标/能力/处理器的唯一注册表
 │  │   └─ ShelfService.cs          唯一的逻辑入口，UI 只跟它说话
 │  │
-│  ├─ DeskTools.Infrastructure/    【系统适配层】所有 OS/P/Invoke/文件 IO 都关在这里
+│  ├─ DeskShelf.Infrastructure/    【系统适配层】所有 OS/P/Invoke/文件 IO 都关在这里
 │  │   ├─ Clipboard/               WpfClipboardService（含 COM 占用重试、HTML→纯文本降级）
 │  │   ├─ DragDrop/                OLE IDataObject → RawContent 的解析器
 │  │   ├─ Storage/                 JsonShelfStore / ImageFileStore / LocalSettingsStore
@@ -74,7 +74,7 @@ DeskTools.sln
 │  │   ├─ Windows/                 WindowPlacement（工作区定位、DPI、Win32 扩展样式）
 │  │   └─ Imaging/                 WIC 缩略图渲染（DecodePixelWidth + 后台线程 + Freeze）
 │  │
-│  └─ DeskTools.App/               【表现层】WPF，唯一允许引用 System.Windows 的项目
+│  └─ DeskShelf.App/               【表现层】WPF，唯一允许引用 System.Windows 的项目
 │      ├─ App.xaml(.cs)            组合根：DI 注册、单实例互斥、异常兜底
 │      ├─ Views/                   PanelWindow / TrayIcon / Units/*UnitView
 │      ├─ ViewModels/              PanelViewModel / UnitViewModel 基类 + 各类型子类
@@ -82,7 +82,7 @@ DeskTools.sln
 │      ├─ Themes/                  Tokens.xaml（设计令牌）/ Controls.xaml（控件样式）
 │      └─ Behaviors/               HoverRevealBehavior / KeyBindingHost / DragDropHost
 │
-└─ tests/DeskTools.Tests/          Domain + Application + ViewModel 单测（Fake 服务）
+└─ tests/DeskShelf.Tests/          Domain + Application + ViewModel 单测（Fake 服务）
 ```
 
 **关键分离约定**
@@ -168,7 +168,7 @@ public sealed class FolderUnit : ShelfUnit { public string Path { get; } }
 
 ```
 ┌─ 32px 顶栏（可拖拽移动窗口）────────────────────────────┐
-│  ⠿ DeskTools            ⟳清空   📌置顶   ✕              │   6px 内边距
+│  ⠿ DeskShelf            ⟳清空   📌置顶   ✕              │   6px 内边距
 ├─────────────────────────────────────────────────────────┤
 │  ┌───────────────────────────────────────────┐  ← 卡片  │   1px 边框 + 4px 圆角
 │  │ 文本内容第一行…                            │         │   悬停/选中时右上角
@@ -211,7 +211,7 @@ public sealed class FolderUnit : ShelfUnit { public string Path { get; } }
 | 双击卡片 | 文本→行内编辑；图片→默认看图程序；文件夹→资源管理器（**仅单选时生效**，多选下双击=聚焦该卡片） |
 | 右键卡片 | 上下文菜单（按能力矩阵动态生成，来自 `UnitCatalog`，不硬编码）；右键未选中的卡片时先把它设为唯一选中 |
 | 顶栏 | 撤销、清空、**最小化**、**设置**（按实测反馈**去掉关闭按钮**） |
-| 退出 | 仅托盘右键菜单「退出 DeskTools」；`Esc` / `Alt+F4` 只收起面板 || 托盘图标 | 双击=切换面板；右键=显示/隐藏/设置/退出；启动即常驻 |
+| 退出 | 仅托盘右键菜单「退出 DeskShelf」；`Esc` / `Alt+F4` 只收起面板 || 托盘图标 | 双击=切换面板；右键=显示/隐藏/设置/退出；启动即常驻 |
 | 开机自启 | 注册表 `HKCU\...\Run`，**默认关**，设置面板可开 |
 
 ### 6.1 多选规则（已定：支持多选，需明确语义）
@@ -276,7 +276,7 @@ public sealed class FolderUnit : ShelfUnit { public string Path { get; } }
 
 ## 8. 数据与持久化设计
 
-- **位置**：`%APPDATA%\DeskTools\`（`shelf.json`、`settings.json`、`images\*.png`、`logs\`）
+- **位置**：`%APPDATA%\DeskShelf\`（`shelf.json`、`settings.json`、`images\*.png`、`logs\`）
 - **JSON 结构（带 schemaVersion，便于未来迁移）**
 
 ```json
@@ -334,7 +334,7 @@ public sealed class FolderUnit : ShelfUnit { public string Path { get; } }
 | D9 | 非图片普通文件拖入 | 暂不入库并提示；后续再加「文件 unit」（可在 P7 评估） |
 | D10 | 界面语言 | 仅简体中文，文案集中资源字典，预留多语言能力 |
 | D11 | 面板默认尺寸 | 360×480，可缩放并记忆 |
-| D12 | 持久化方案 | JSON + 图片独立落盘（`%APPDATA%\DeskTools\`），仓储接口预留 SQLite 升级 |
+| D12 | 持久化方案 | JSON + 图片独立落盘（`%APPDATA%\DeskShelf\`），仓储接口预留 SQLite 升级 |
 
 > 以上 12 项在 P0 起生效；如需调整，改动成本在 P3 之前都很低，P4 之后（逻辑管线与持久化落地）再改动会牵动多个项目。
 
@@ -348,7 +348,7 @@ public sealed class FolderUnit : ShelfUnit { public string Path { get; } }
 
 | 阶段 | 状态 | 实际交付 |
 | --- | --- | --- |
-| P0 骨架 | ✅ | `DeskTools.slnx` + 4 工程 + DI 组合根 + 文件日志 + 单实例互斥 + `Directory.Build.props` 统一告警即失败 |
+| P0 骨架 | ✅ | `DeskShelf.slnx` + 4 工程 + DI 组合根 + 文件日志 + 单实例互斥 + `Directory.Build.props` 统一告警即失败 |
 | P1 UI 外壳 | ✅ | 设计令牌双主题、控件样式、无边框置顶窗口、36px 可拖拽顶栏、滚动面板、空态、消息条、缩放热区（Win32 `WM_NCHITTEST`） |
 | P2 UI 卡片 | ✅ | 三类卡片模板 + 悬停小标 + 选中/编辑态 + `UnitTemplateSelector`（按 `ViewKey` 分派，新增类型零改动） |
 | P3 UI 接线 | ✅ | `PanelViewModel` / `UnitViewModel` 全套命令、多选（Ctrl/Shift）、行内编辑提交、右键菜单数据 |
@@ -409,7 +409,7 @@ public sealed class FolderUnit : ShelfUnit { public string Path { get; } }
   ② `H.NotifyIcon` 要求 `BitmapImage.UriSource`，从内存流构造的帧会导致托盘图标加载失败；
   ③ 缩略图解码与编码跨线程，触发 `BitmapSource` 线程亲和性异常（真实 bug，非测试代码问题）；
   ④ 悬停小标叠在亮色图片上几乎不可见；
-- `DESKTOOLS_SEED_SAMPLE=1` 注入样例数据，用于覆盖「图片 / 文件夹」两类只能由拖拽产生的卡片。
+- `DeskShelf_SEED_SAMPLE=1` 注入样例数据，用于覆盖「图片 / 文件夹」两类只能由拖拽产生的卡片。
 
 ---
 
@@ -481,16 +481,16 @@ Windows 的 OLE 拖放协议里，一次拖拽必须由**拖源**主动发起：
 
 ### v1.0.0（2026-10-14）
 
-- **仓库**：https://github.com/zhaodefan/DeskTools （public）
-- **Release**：https://github.com/zhaodefan/DeskTools/releases/tag/v1.0.0
+- **仓库**：https://github.com/zhaodefan/DeskShelf （public）
+- **Release**：https://github.com/zhaodefan/DeskShelf/releases/tag/v1.0.0
 - **产物**：
-  - `DeskTools-1.0.0-setup.exe`（64.62 MB）—— Inno Setup 安装程序，per-user 免管理员
-  - `DeskTools-1.0.0-portable-win-x64.zip`（64.02 MB）—— 便携版
-  - 自包含单文件 `DeskTools.exe`（69.35 MB，无需预装 .NET）
+  - `DeskShelf-1.0.0-setup.exe`（64.62 MB）—— Inno Setup 安装程序，per-user 免管理员
+  - `DeskShelf-1.0.0-portable-win-x64.zip`（64.02 MB）—— 便携版
+  - 自包含单文件 `DeskShelf.exe`（69.35 MB，无需预装 .NET）
 
 **发布前修掉的最后一个真实缺陷**：单文件发布（`PublishSingleFile`）后 pack URI 解析失败，
 而 `H.NotifyIcon` 要求 `ImageSource` 必须带 `UriSource`，导致托盘图标抛
-`UriFormatException`。修正为：优先从程序目录旁的同名 `desktools.ico` 以文件 URI 加载，
+`UriFormatException`。修正为：优先从程序目录旁的同名 `DeskShelf.ico` 以文件 URI 加载，
 pack URI 作为回退；发布目标显式复制该图标（单文件发布会过滤 `None` 内容项）。
 
 **打包踩坑记录**（都写进了脚本注释）：
@@ -498,3 +498,35 @@ pack URI 作为回退；发布目标显式复制该图标（单文件发布会�
 2. Inno Setup 6.7 起**不再随包提供简体中文**，需附带社区翻译文件（`installer\Languages\`）；
 3. `Iscc` 解析文件路径以**当前工作目录**为基准，脚本必须以 `/DRepoRoot=` 传入绝对路径；
 4. 安装器的 `AppMutex` 必须与程序内单实例 Mutex 同名，才能在安装/卸载时自动关闭运行中的实例。
+---
+
+## 15. 更名与 v1.1.0
+
+### 更名范围（DeskTools → DeskShelf）
+
+| 层级 | 变更 |
+| --- | --- |
+| 中文正式名 | **桌面置物架**（界面标题、托盘提示、菜单、消息框、安装器描述） |
+| 英文项目名 | **DeskShelf**（仓库、解决方案、5 个工程与命名空间、exe、安装包） |
+| 数据目录 | `%APPDATA%\DeskShelf`，**首次启动自动从 `%APPDATA%\DeskTools` 迁移** |
+| 安装器 AppId | **保持不变**，因此可从 v1.0.0 直接覆盖升级 |
+
+### 更名实施要点（都属于容易踩的坑）
+
+1. **数据迁移必须容错**：只在「旧目录存在且新目录不存在」时执行；优先 `Directory.Move`，
+   跨卷或被占用时退化为复制后删除，再失败就放弃迁移并保留旧目录 —— 任何情况下都不能丢用户数据。
+2. **PowerShell 脚本的 BOM**：批量文本替换若以无 BOM 的 UTF-8 写回，PS 5.1 会把中文当 ANSI 解析而报语法错误；
+   `tools/*.ps1` 必须保持 UTF-8 **BOM**。
+3. **图标文件名也在替换范围内**：`desktools.ico → deskshelf.ico`，工程文件与托盘加载代码里的引用要同步，
+   否则编译期报 `CS7064 打开图标文件出错`。
+4. **不要用正则批量插入 XAML 属性**：本轮曾用 `[regex]::Replace` + scriptblock 给按钮插
+   `AutomationProperties.Name`，结果 scriptblock 内变量作用域失效，**把按钮的 `Command` / `Click` 绑定删掉了**
+   （撤销/清空/保存/取消全部失效）。改为逐处 `edit` 精确修改。教训：XAML 的结构性改动不要走正则。
+5. **旧的 v1.0.0 发布说明保留原文**（`Docs/ReleaseNotes-v1.0.0.md`），作为历史记录不做替换。
+
+### v1.1.0 功能改动
+
+- 标题栏下方新增「+ 新建文本」操作条：新建空白文本 unit 并立即聚焦编辑框（滚动到可见位置）
+- 标题栏右侧顺序改为「设置 → 最小化」（最小化在最右）
+- 修复：收起面板 / 退出前自动提交正在编辑的文本（此前会丢失未提交内容）
+- 修复：所有图标按钮补 `AutomationProperties.Name`（此前屏幕阅读器无法读出按钮用途）

@@ -1,4 +1,4 @@
-﻿# DeskTools 界面自动化辅助（供开发期验证使用，不参与产品构建）
+﻿# DeskShelf 界面自动化辅助（供开发期验证使用，不参与产品构建）
 #
 # 用途：在没有人工操作的情况下验证窗口/控件行为。提供：
 #   - Find-Window            按进程名 + 标题找窗口
@@ -9,19 +9,19 @@
 #
 # 使用方式（在仓库根目录）：
 #   . .\tools\UiProbe.ps1
-#   $w = Find-Window -ProcessName DeskTools -Title 'DeskTools 设置'
+#   $w = Find-Window -ProcessName DeskShelf -Title 'DeskShelf 设置'
 #   Invoke-UiaClick -Window $w -Name '浅色' -ControlType RadioButton
 
 Set-StrictMode -Version Latest
 
-if (-not ('DeskToolsProbe' -as [type])) {
+if (-not ('DeskShelfProbe' -as [type])) {
     Add-Type -ReferencedAssemblies System.Drawing, System.Drawing.Primitives, UIAutomationClient, UIAutomationTypes -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
-public static class DeskToolsProbe
+public static class DeskShelfProbe
 {
     public delegate bool EnumProc(IntPtr hwnd, IntPtr param);
 
@@ -93,8 +93,8 @@ function Find-Window {
     $process = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue
     if (-not $process) { return $null }
 
-    foreach ($hwnd in [DeskToolsProbe]::WindowsOf([uint32]$process.Id)) {
-        $text = [DeskToolsProbe]::TitleOf($hwnd)
+    foreach ($hwnd in [DeskShelfProbe]::WindowsOf([uint32]$process.Id)) {
+        $text = [DeskShelfProbe]::TitleOf($hwnd)
         if (-not $Title -or $text -eq $Title) { return $hwnd }
     }
 
@@ -104,8 +104,8 @@ function Find-Window {
 function Get-WindowRect {
     param([Parameter(Mandatory)][IntPtr]$Window)
 
-    $rect = New-Object DeskToolsProbe+RECT
-    [void][DeskToolsProbe]::GetWindowRect($Window, [ref]$rect)
+    $rect = New-Object DeskShelfProbe+RECT
+    [void][DeskShelfProbe]::GetWindowRect($Window, [ref]$rect)
     return $rect
 }
 
@@ -168,7 +168,7 @@ function Invoke-UiaClick {
 
     # 没有可用模式时退化为坐标点击
     $rect = $element.Current.BoundingRectangle
-    [DeskToolsProbe]::Click([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+    [DeskShelfProbe]::Click([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
     return $true
 }
 
@@ -207,13 +207,13 @@ function Save-WindowShot {
 
     $directory = Split-Path -Parent $Path
     if ($directory -and -not (Test-Path $directory)) { New-Item -ItemType Directory -Path $directory -Force | Out-Null }
-    return [DeskToolsProbe]::Capture($Window, $Path)
+    return [DeskShelfProbe]::Capture($Window, $Path)
 }
 
-function Get-DeskToolsLog {
+function Get-DeskShelfLog {
     param([int]$Tail = 20)
 
-    $log = Get-ChildItem "$env:APPDATA\DeskTools\logs" -Filter '*.log' -ErrorAction SilentlyContinue |
+    $log = Get-ChildItem "$env:APPDATA\DeskShelf\logs" -Filter '*.log' -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $log) { return @('（无日志文件）') }
     return Get-Content $log.FullName -Tail $Tail

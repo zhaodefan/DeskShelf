@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DeskShelf.App/DeskShelf.App.csproj" />
+    <Project Path="src/DeskShelf.Application/DeskShelf.Application.csproj" />
+    <Project Path="src/DeskShelf.Domain/DeskShelf.Domain.csproj" />
+    <Project Path="src/DeskShelf.Infrastructure/DeskShelf.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DeskShelf.Tests/DeskShelf.Tests.csproj" />
+  </Folder>
+</Solution>

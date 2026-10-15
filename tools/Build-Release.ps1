@@ -6,8 +6,8 @@
 #   powershell -File tools\Build-Release.ps1 -SkipInstaller
 #
 # 产物（artifacts\installer\）：
-#   DeskTools-<版本>-setup.exe              安装程序（per-user，免管理员）
-#   DeskTools-<版本>-portable-win-x64.zip   便携版（解压即用）
+#   DeskShelf-<版本>-setup.exe              安装程序（per-user，免管理员）
+#   DeskShelf-<版本>-portable-win-x64.zip   便携版（解压即用）
 #
 # 依赖：.NET 8 SDK；生成安装包还需要 Inno Setup 6
 #   winget install --id JRSoftware.InnoSetup
@@ -27,10 +27,10 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $publishDir = Join-Path $root "artifacts\publish\$Runtime"
 $installerDir = Join-Path $root 'artifacts\installer'
-$project = Join-Path $root 'src\DeskTools.App\DeskTools.App.csproj'
-$solution = Join-Path $root 'DeskTools.slnx'
-$testProject = Join-Path $root 'tests\DeskTools.Tests\DeskTools.Tests.csproj'
-$issFile = Join-Path $root 'installer\DeskTools.iss'
+$project = Join-Path $root 'src\DeskShelf.App\DeskShelf.App.csproj'
+$solution = Join-Path $root 'DeskShelf.slnx'
+$testProject = Join-Path $root 'tests\DeskShelf.Tests\DeskShelf.Tests.csproj'
+$issFile = Join-Path $root 'installer\DeskShelf.iss'
 
 function Write-Step([string]$text) {
     Write-Host ''
@@ -74,10 +74,10 @@ Write-Step "单文件发布（self-contained $Runtime）"
     -v q --nologo
 if ($LASTEXITCODE -ne 0) { throw '发布失败' }
 
-Write-Artifact (Join-Path $publishDir 'DeskTools.exe')
+Write-Artifact (Join-Path $publishDir 'DeskShelf.exe')
 
 Write-Step '生成便携包（zip）'
-$zipPath = Join-Path $installerDir "DeskTools-$Version-portable-$Runtime.zip"
+$zipPath = Join-Path $installerDir "DeskShelf-$Version-portable-$Runtime.zip"
 # 用 ZipFile.CreateFromDirectory 而不是 Compress-Archive：
 # 后者对已是压缩格式的大文件会产出损坏的包（这里曾生成 0.02 MB 的假包）
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -113,7 +113,7 @@ if ($LASTEXITCODE -ne 0) { throw '生成安装程序失败' }
 Write-Step '发布产物'
 Get-ChildItem $installerDir -File | ForEach-Object { Write-Artifact $_.FullName }
 
-$setupPath = Join-Path $installerDir "DeskTools-$Version-setup.exe"
+$setupPath = Join-Path $installerDir "DeskShelf-$Version-setup.exe"
 Write-Host ''
 Write-Host '发布到 GitHub Release：' -ForegroundColor Yellow
-Write-Host "  gh release create v$Version `"$setupPath`" `"$zipPath`" --title `"DeskTools v$Version`" --notes-file `"$root\Docs\ReleaseNotes-v$Version.md`""
+Write-Host "  gh release create v$Version `"$setupPath`" `"$zipPath`" --title `"DeskShelf v$Version`" --notes-file `"$root\Docs\ReleaseNotes-v$Version.md`""

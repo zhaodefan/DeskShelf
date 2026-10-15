@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>DeskShelf.Domain</RootNamespace>
+    <AssemblyName>DeskShelf.Domain</AssemblyName>
+    <!-- UI 无关：本工程不得出现 System.Windows / P/Invoke -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+</Project>
