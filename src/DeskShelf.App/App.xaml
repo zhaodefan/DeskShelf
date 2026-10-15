@@ -21,6 +21,8 @@
       <conv:BooleanToVisibilityConverter x:Key="Converter.BoolToVisibility" />
       <conv:BooleanToVisibilityConverter x:Key="Converter.BoolToVisibility.Invert" Invert="True" />
       <conv:NotNullToVisibilityConverter x:Key="Converter.NotNullToVisibility" />
+      <conv:BooleanInverter x:Key="Converter.BoolInvert" />
+      <conv:NullToBooleanConverter x:Key="Converter.IsNull" />
     </ResourceDictionary>
   </Application.Resources>
 </Application>

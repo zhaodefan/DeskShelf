@@ -533,7 +533,13 @@ public partial class PanelWindow : Window
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e) => HidePanel();
 
-    private void OnSettingsClick(object sender, RoutedEventArgs e)
+    private void OnSettingsClick(object sender, RoutedEventArgs e) => OpenSettings();
+
+    /// <summary>
+    /// 打开设置窗口并返回它（托盘「检查更新」也走这里）。
+    /// </summary>
+    /// <returns>已显示的设置窗口；打开失败时返回 <c>null</c>。</returns>
+    public SettingsWindow? OpenSettings()
     {
         try
         {
@@ -548,11 +554,13 @@ public partial class PanelWindow : Window
             settings.Show();
             settings.Activate();
             _logger.LogDebug("设置窗口已打开。");
+            return settings;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "打开设置窗口失败。");
             _viewModel.ShowStatus("打开设置窗口失败，详见日志。");
+            return null;
         }
     }
 

@@ -8,7 +8,7 @@
 
 - 目标框架：`.NET 8 (net8.0-windows)` + `WPF`
 - 平台：Windows 10 1809+ / Windows 11（64 位）
-- 当前版本：**v1.1.0**（更名 DeskShelf + 新建文本 unit + 按钮布局调整）
+- 当前版本：**v1.2.0**（应用内在线更新 + 新建文本 unit）
 
 ---
 
@@ -31,9 +31,15 @@ dotnet build .\DeskShelf.slnx
 dotnet run --project .\src\DeskShelf.App\DeskShelf.App.csproj
 dotnet test  .\tests\DeskShelf.Tests\DeskShelf.Tests.csproj
 
+# 可选的联网集成测试（默认跳过，会访问真实 GitHub API）
+# 验证 Release JSON 契约、安装包识别与下载完整性
+$env:DESKSHELF_UPDATE_INTEGRATION = "1"
+$env:GITHUB_TOKEN = (gh auth token)   # 可选，未认证只有 60 次/小时
+dotnet test  .\tests\DeskShelf.Tests\DeskShelf.Tests.csproj --filter "FullyQualifiedName~Integration"
+
 # 一键出发布产物（单文件 + 便携 zip + 安装程序）
 # 生成安装包需要 Inno Setup：winget install --id JRSoftware.InnoSetup
-powershell -File tools\Build-Release.ps1 -Version 1.1.0
+powershell -File tools\Build-Release.ps1 -Version 1.2.0
 ```
 
 > Visual Studio 未安装 WPF 项目模板时，请统一使用 `dotnet` CLI 构建与运行。
@@ -50,6 +56,7 @@ powershell -File tools\Build-Release.ps1 -Version 1.1.0
 | 顶栏按钮 | 撤销、清空、**最小化**（收起面板，托盘图标继续常驻）、**设置**。**不提供关闭按钮** —— 退出只走托盘右键菜单，避免误触 |
 | 设置界面 | 顶栏「设置」打开独立窗口：改呼出热键（**按键录入** + 占用检测）、明暗主题（即时预览）、开机自启、图片缩略图开关、unit 数量上限、打开数据目录、清空面板。开关类**即时生效**，热键在「保存」时生效，**取消可整体回滚** |
 | 退出方式 | 右键任务栏通知区域的小图标 → **退出桌面置物架**（`Esc` / `Alt+F4` 只会收起面板，不会退出） |
+| 在线更新 | 设置 → 更新 里「检查更新」→「下载并安装」：自动下载官方安装包、后台静默升级并重启；也可右键托盘图标选「检查更新…」 |
 | 新建文本 | 标题栏下方的「+ 新建文本」按钮：新建一个空白文本 unit 并立刻进入编辑态，直接打字即可 |
 | 文本 unit | `Ctrl+V` 粘贴；面板内展示文本；双击行内编辑；`Ctrl+C` 复制文本 |
 | 图片 unit | 粘贴图片 / 拖入图片文件；展示缩略图；双击用系统看图程序打开；`Ctrl+C` 复制图片 |
@@ -83,6 +90,7 @@ powershell -File tools\Build-Release.ps1 -Version 1.1.0
 ├─ shelf.json           置物架内容（schemaVersion 化，便于未来迁移）
 ├─ settings.json        热键、面板位置尺寸、主题等
 ├─ images\              原图与缩略图（按内容哈希命名，重复粘贴不重复占空间）
+├─ updates\             在线更新下载的安装包（升级完成后可手动删除）
 ├─ logs\                滚动日志（保留 7 天，排查剪贴板/热键问题用）
 └─ backup\              损坏数据文件的自动备份
 ```

@@ -196,6 +196,9 @@ public partial class App : System.Windows.Application, IThemeApplier
             sp.GetRequiredService<AutoStartService>(),
             sp.GetRequiredService<ShelfService>(),
             sp.GetRequiredService<IThemeApplier>(),
+            sp.GetRequiredService<IUpdateService>(),
+            sp.GetRequiredService<ISystemLauncher>(),
+            sp.GetRequiredService<IUiDispatcher>(),
             () => sp.GetRequiredService<ISystemLauncher>().OpenPathAsync(paths.Root),
             sp.GetRequiredService<ILogger<SettingsViewModel>>()));
         services.AddTransient(sp => new SettingsWindow(sp.GetRequiredService<SettingsViewModel>()));

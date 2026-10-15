@@ -27,6 +27,16 @@ public sealed record ShelfSettings
     /// <summary>unit 数量上限，超出时拒绝新增并提示。</summary>
     public int MaxUnits { get; init; } = 500;
 
+    /// <summary>
+    /// 可选的 GitHub 访问令牌，仅用于「检查更新」时提升 API 配额。
+    /// </summary>
+    /// <remarks>
+    /// 未认证的 GitHub API 限流为 60 次/小时/IP，在 NAT 或公司网络下很容易被用尽；
+    /// 提供只读令牌可提升到 5000 次/小时。留空即匿名访问（默认）。
+    /// 令牌只保存在本机 <c>settings.json</c>，除 GitHub API 外不会发往任何地方。
+    /// </remarks>
+    public string? GitHubToken { get; init; }
+
     /// <summary>默认设置。</summary>
     public static ShelfSettings Default { get; } = new();
 }

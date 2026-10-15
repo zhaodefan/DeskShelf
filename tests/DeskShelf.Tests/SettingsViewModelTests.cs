@@ -121,13 +121,19 @@ public sealed class SettingsViewModelTests
         Assert.Equal(777, vm.MaxUnits);
     }
 
-    private static SettingsViewModel Create(ShelfTestContext ctx, IHotkeyService? hotkeys = null)
+    private static SettingsViewModel Create(
+        ShelfTestContext ctx,
+        IHotkeyService? hotkeys = null,
+        IUpdateService? updates = null)
         => new(
             ctx.Settings,
             hotkeys ?? new RecordingHotkeyService(),
             new AutoStartService(NullLogger<AutoStartService>.Instance),
             ctx.Service,
             new FakeThemeApplier(),
+            updates ?? new FakeUpdateService(),
+            ctx.Launcher,
+            new FakeUiDispatcher(),
             () => Task.CompletedTask,
             NullLogger<SettingsViewModel>.Instance);
 

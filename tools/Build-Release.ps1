@@ -106,8 +106,10 @@ if (-not $iscc) {
     return
 }
 
-# 传入仓库根目录：Iscc 解析文件路径以「当前工作目录」为基准，不能靠相对路径猜测
-& $iscc "/DRepoRoot=$root" $issFile
+# 传入仓库根目录：Iscc 解析文件路径以「当前工作目录」为基准，不能靠相对路径猜测。
+# 传入版本号：安装包文件名与注册表版本必须与本次构建的程序集版本一致，
+# 只靠脚本参数驱动的 -Version 与 .iss 里的手写值必然会漂移（曾产出过版本号错位的安装包）。
+& $iscc "/DRepoRoot=$root" "/DAppVersion=$Version" $issFile
 if ($LASTEXITCODE -ne 0) { throw '生成安装程序失败' }
 
 Write-Step '发布产物'

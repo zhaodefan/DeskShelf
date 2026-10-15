@@ -53,3 +53,30 @@ public sealed class BooleanToVisibilityConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException("该转换器仅支持单向绑定。");
 }
+
+/// <summary>布尔取反（用于「忙碌时禁用按钮」这类绑定）。</summary>
+public sealed class BooleanInverter : IValueConverter
+{
+    /// <inheritdoc />
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is not true;
+
+    /// <inheritdoc />
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is not true;
+}
+
+/// <summary>值是否为 <c>null</c> → 布尔（用于「进度总量未知时显示不确定进度条」）。</summary>
+public sealed class NullToBooleanConverter : IValueConverter
+{
+    /// <summary>值为 <c>null</c> 时返回的结果（默认 <c>true</c>）。</summary>
+    public bool WhenNull { get; set; } = true;
+
+    /// <inheritdoc />
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is null ? WhenNull : !WhenNull;
+
+    /// <inheritdoc />
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException("该转换器仅支持单向绑定。");
+}

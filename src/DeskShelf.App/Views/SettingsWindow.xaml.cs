@@ -22,8 +22,25 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         DataContext = viewModel;
 
+        // 在线升级结束时由 ViewModel 请求关闭应用（保持「表现层负责进程生命周期」的边界）
+        _viewModel.ShutdownApplicationAsync = ShutdownApplicationAsync;
+
         Loaded += OnLoaded;
         PreviewKeyDown += OnPreviewKeyDown;
+    }
+
+    /// <summary>结束应用（在线升级完成后的重启路径）。</summary>
+    private static Task ShutdownApplicationAsync()
+    {
+        // 后台任务里调用，需切回 UI 线程再关应用
+        var app = WpfApp.Current;
+        var dispatcher = app?.Dispatcher;
+        if (app is null || dispatcher is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return dispatcher.InvokeAsync(app.Shutdown).Task;
     }
 
     /// <summary>
@@ -126,6 +143,42 @@ public partial class SettingsWindow : Window
 
     private void OnOpenDataFolderClick(object sender, RoutedEventArgs e)
         => _ = _viewModel.OpenDataFolderAsync();
+
+    // ————————————————————————— 更新 —————————————————————————
+
+    private void OnCheckUpdateClick(object sender, RoutedEventArgs e)
+        => _ = _viewModel.CheckForUpdatesAsync();
+
+    private void OnOpenReleasesClick(object sender, RoutedEventArgs e)
+        => _ = _viewModel.OpenReleasesPageAsync();
+
+    private async void OnInstallUpdateClick(object sender, RoutedEventArgs e)
+    {
+        // 先把用户对设置的改动落盘，再开始升级 —— 否则重启后设置会丢失
+        await _viewModel.SaveAsync().ConfigureAwait(true);
+
+        if (!_viewModel.IsInstalledBuild)
+        {
+            // 便携版无法自动替换正在运行的文件：只下载并打开所在目录
+            await _viewModel.InstallUpdateAsync().ConfigureAwait(true);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            this,
+            "将下载新版本并在后台静默安装。\n\n安装期间本程序会自动退出，安装完成后自动重新启动（约 1 分钟）。\n\n现在开始吗？",
+            "在线更新",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Information,
+            MessageBoxResult.OK);
+
+        if (confirm != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await _viewModel.InstallUpdateAsync().ConfigureAwait(true);
+    }
 
     private void OnClearShelfClick(object sender, RoutedEventArgs e)
     {

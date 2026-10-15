@@ -189,6 +189,39 @@
   </Style>
   <!--#endregion -->
 
+  <!--#region 通用单行输入框（令牌、路径等） -->
+  <Style x:Key="Input.Text" TargetType="TextBox">
+    <Setter Property="Padding" Value="8,5" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+    <Setter Property="FontSize" Value="{DynamicResource Font.Size.Caption}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Accent}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TextBox">
+          <Border x:Name="Root"
+                  Background="{DynamicResource Brush.Surface}"
+                  BorderBrush="{DynamicResource Brush.Border.Strong}"
+                  BorderThickness="1"
+                  CornerRadius="{DynamicResource Radius.Button}"
+                  Padding="{TemplateBinding Padding}">
+            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+  <!--#endregion -->
+
   <!--#region 主按钮（保存） -->
   <Style x:Key="Button.Primary" TargetType="Button">
     <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />

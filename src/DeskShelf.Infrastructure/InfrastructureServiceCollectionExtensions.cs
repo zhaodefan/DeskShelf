@@ -1,3 +1,4 @@
+using System.Net.Http;
 using DeskShelf.Application.Abstractions;
 using DeskShelf.Application.Services;
 using DeskShelf.Application.Undo;
@@ -11,6 +12,7 @@ using DeskShelf.Infrastructure.Launchers;
 using DeskShelf.Infrastructure.Logging;
 using DeskShelf.Infrastructure.Persistence;
 using DeskShelf.Infrastructure.Storage;
+using DeskShelf.Infrastructure.Updates;
 using DeskShelf.Infrastructure.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -56,6 +58,19 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IHotkeyService, GlobalHotkeyService>();
         services.AddSingleton<AutoStartService>();
         services.AddSingleton<IImageBytesSource, ImageBytesSource>();
+
+        // —— 更新（检查 GitHub Releases → 下载安装包 → 静默升级）——
+        // 单个 HttpClient 复用（避免端口耗尽）；User-Agent 是 GitHub API 的硬性要求。
+        services.AddSingleton(_ =>
+        {
+            var http = new HttpClient { Timeout = TimeSpan.FromSeconds(100) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("DeskShelf-Updater");
+            http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            return http;
+        });
+        services.AddSingleton<IReleaseSource, GitHubReleaseSource>();
+        services.AddSingleton<IUpdateService, UpdateService>();
+
         services.AddSingleton(sp => new DebouncedSaver(
             async token => await sp.GetRequiredService<ShelfService>().SaveAsync(token).ConfigureAwait(false)));
 

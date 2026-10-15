@@ -191,12 +191,23 @@ public sealed class TrayIconHost : IDisposable
         menu.Items.Add(new Separator());
         menu.Items.Add(CreateItem("清空面板", ClearPanel));
         menu.Items.Add(CreateItem("打开数据 / 设置目录", OpenSettingsFolder));
+        menu.Items.Add(CreateItem("检查更新…", CheckForUpdates));
         menu.Items.Add(new Separator());
 
         // 这是退出的唯一入口（顶栏已不提供关闭按钮），因此措辞必须明确
         menu.Items.Add(CreateItem("退出桌面置物架", ExitApplication));
 
         return menu;
+    }
+
+    /// <summary>托盘「检查更新」：打开设置窗口并立即开始检查（更新区就在设置里）。</summary>
+    private void CheckForUpdates()
+    {
+        var settings = _panel?.OpenSettings();
+        if (settings?.DataContext is ViewModels.SettingsViewModel viewModel)
+        {
+            _ = viewModel.CheckForUpdatesAsync();
+        }
     }
 
     private static MenuItem CreateItem(string header, Action action)

@@ -25,11 +25,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly AutoStartService _autoStartService;
     private readonly ShelfService _shelf;
     private readonly IThemeApplier _themeApplier;
+    private readonly IUpdateService _updates;
+    private readonly ISystemLauncher _launcher;
+    private readonly IUiDispatcher _dispatcher;
     private readonly Func<Task> _openDataFolder;
     private readonly ILogger<SettingsViewModel> _logger;
 
     /// <summary>打开窗口时的设置快照，用于「取消」回滚。</summary>
     private ShelfSettings _original;
+
+    /// <summary>最近一次检查发现的可更新版本。</summary>
+    private AppRelease? _availableRelease;
+
+    /// <summary>正在进行的更新操作，用于取消。</summary>
+    private CancellationTokenSource? _updateCts;
 
     [ObservableProperty]
     private HotkeyGesture _hotkey = HotkeyGesture.Default;
@@ -42,6 +51,25 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _showImageThumbnails = true;
+
+    [ObservableProperty]
+    private string _updateStatus = string.Empty;
+
+    [ObservableProperty]
+    private bool _isUpdateBusy;
+
+    [ObservableProperty]
+    private bool _canInstallUpdate;
+
+    [ObservableProperty]
+    private double? _updateProgress;
+
+    [ObservableProperty]
+    private bool _isUpdateProgressVisible;
+
+    /// <summary>可选的 GitHub 访问令牌（提升 API 配额，留空即匿名访问）。</summary>
+    [ObservableProperty]
+    private string? _gitHubToken;
 
     [ObservableProperty]
     private int _maxUnits = 500;
@@ -59,6 +87,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         AutoStartService autoStartService,
         ShelfService shelf,
         IThemeApplier themeApplier,
+        IUpdateService updates,
+        ISystemLauncher launcher,
+        IUiDispatcher dispatcher,
         Func<Task> openDataFolder,
         ILogger<SettingsViewModel> logger)
     {
@@ -67,12 +98,30 @@ public sealed partial class SettingsViewModel : ObservableObject
         _autoStartService = autoStartService ?? throw new ArgumentNullException(nameof(autoStartService));
         _shelf = shelf ?? throw new ArgumentNullException(nameof(shelf));
         _themeApplier = themeApplier ?? throw new ArgumentNullException(nameof(themeApplier));
+        _updates = updates ?? throw new ArgumentNullException(nameof(updates));
+        _launcher = launcher ?? throw new ArgumentNullException(nameof(launcher));
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _openDataFolder = openDataFolder ?? throw new ArgumentNullException(nameof(openDataFolder));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         _original = settings.Current;
         LoadFrom(_original);
+        UpdateStatus = $"当前版本 {_updates.CurrentVersion}（{(_updates.IsInstalled ? "安装版" : "便携版")}）";
     }
+
+    /// <summary>当前版本号文本。</summary>
+    public string CurrentVersionText => _updates.CurrentVersion.ToString();
+
+    /// <summary>当前是否为安装版（便携版无法自动升级，只能引导手动下载）。</summary>
+    public bool IsInstalledBuild => _updates.IsInstalled;
+
+    /// <summary>便携版提示：自动升级需要安装版。</summary>
+    public string PortableHint => IsInstalledBuild
+        ? string.Empty
+        : "当前是便携版：可以下载新版，但需要手动解压替换（自动安装仅支持安装版）。";
+
+    /// <summary>由视图提供：安装完成后结束应用进程（表现层职责）。</summary>
+    public Func<Task>? ShutdownApplicationAsync { get; set; }
 
     /// <summary>当前 unit 数量文案。</summary>
     public string UnitCountText => $"当前已存放 {_shelf.Count} 个 unit";
@@ -180,6 +229,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             Theme = Theme,
             ShowImageThumbnails = ShowImageThumbnails,
             MaxUnits = MaxUnits,
+            GitHubToken = string.IsNullOrWhiteSpace(GitHubToken) ? null : GitHubToken.Trim(),
         };
 
         await _settings.SaveAsync(updated).ConfigureAwait(true);
@@ -215,6 +265,163 @@ public sealed partial class SettingsViewModel : ObservableObject
         StatusMessage = $"{result.Message}（此操作无法撤销）";
     }
 
+    // ————————————————————————— 更新 —————————————————————————
+
+    /// <summary>检查是否有新版本（手动触发）。</summary>
+    public async Task CheckForUpdatesAsync()
+    {
+        if (IsUpdateBusy)
+        {
+            return;
+        }
+
+        IsUpdateBusy = true;
+        CanInstallUpdate = false;
+        UpdateStatus = "正在检查更新…";
+
+        try
+        {
+            var result = await _updates.CheckAsync().ConfigureAwait(true);
+            _availableRelease = result.HasUpdate ? result.Release : null;
+
+            UpdateStatus = result.HasUpdate
+                ? $"发现新版本 {result.Latest}（当前 {result.Current}）。"
+                : result.Message;
+
+            // 只有「安装版 + 该发布带安装包」才允许一键升级，否则引导到发布页
+            CanInstallUpdate = result.HasUpdate && result.Release?.FindInstaller() is not null;
+
+            if (result.Status == UpdateCheckStatus.UpdateAvailable && !CanInstallUpdate)
+            {
+                UpdateStatus += " 可在发布页手动下载。";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "检查更新失败。");
+            UpdateStatus = "检查更新失败，请稍后重试。";
+            _availableRelease = null;
+            CanInstallUpdate = false;
+        }
+        finally
+        {
+            IsUpdateBusy = false;
+        }
+    }
+
+    /// <summary>打开发布页（手动下载入口）。</summary>
+    public async Task OpenReleasesPageAsync()
+    {
+        var url = _availableRelease?.PageUrl;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            url = "https://github.com/zhaodefan/DeskShelf/releases";
+        }
+
+        var ok = await _launcher.OpenPathAsync(url).ConfigureAwait(true);
+        if (!ok)
+        {
+            UpdateStatus = "无法打开浏览器，请手动访问：" + url;
+        }
+    }
+
+    /// <summary>
+    /// 下载新版安装包并完成在线升级。
+    /// </summary>
+    /// <remarks>
+    /// 流程：下载 → 启动静默安装 → 等待安装结束 → 重启应用。
+    /// 下载与安装期间界面保持响应，进度通过 <see cref="UpdateProgress"/> 显示。
+    /// </remarks>
+    public async Task InstallUpdateAsync()
+    {
+        if (IsUpdateBusy || _availableRelease is null)
+        {
+            return;
+        }
+
+        var release = _availableRelease;
+        var isPortable = !_updates.IsInstalled;
+
+        IsUpdateBusy = true;
+        CanInstallUpdate = false;
+        IsUpdateProgressVisible = true;
+        UpdateProgress = 0d;
+
+        _updateCts?.Dispose();
+        _updateCts = new CancellationTokenSource();
+        var token = _updateCts.Token;
+
+        try
+        {
+            UpdateStatus = "正在下载安装包…";
+            var progress = new Progress<double?>(value => _dispatcher.Post(() =>
+            {
+                UpdateProgress = value;
+                UpdateStatus = value is { } percent
+                    ? $"正在下载安装包… {percent:P0}"
+                    : "正在下载安装包…";
+            }));
+
+            var installerPath = await _updates
+                .DownloadInstallerAsync(release, progress, token)
+                .ConfigureAwait(true);
+
+            UpdateStatus = isPortable
+                ? "下载完成。便携版需要手动解压替换，已为你打开所在目录。"
+                : "下载完成，正在安装…（应用会短暂退出，随后自动重启）";
+
+            if (isPortable)
+            {
+                await _launcher
+                    .OpenPathAsync(Path.GetDirectoryName(installerPath) ?? installerPath)
+                    .ConfigureAwait(true);
+                IsUpdateProgressVisible = false;
+                return;
+            }
+
+            // 交给安装程序接棒：调用方（视图）随后会结束本进程
+            var install = await _updates
+                .RunInstallerAsync(installerPath, relaunchAfterInstall: true, token)
+                .ConfigureAwait(true);
+
+            if (!install.Success)
+            {
+                UpdateStatus = install.Message;
+                IsUpdateProgressVisible = false;
+                return;
+            }
+
+            UpdateStatus = "升级完成，正在重启…";
+            if (ShutdownApplicationAsync is not null)
+            {
+                await ShutdownApplicationAsync().ConfigureAwait(true);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateStatus = "已取消更新。";
+            IsUpdateProgressVisible = false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "在线更新失败。");
+            UpdateStatus = "更新失败：" + ex.Message;
+            IsUpdateProgressVisible = false;
+        }
+        finally
+        {
+            IsUpdateBusy = false;
+            CanInstallUpdate = !isPortable && _availableRelease is not null;
+        }
+    }
+
+    /// <summary>取消正在进行的下载。</summary>
+    public void CancelUpdate()
+    {
+        _updateCts?.Cancel();
+        UpdateStatus = "正在取消…";
+    }
+
     private void LoadFrom(ShelfSettings settings)
     {
         Hotkey = settings.Hotkey;
@@ -222,6 +429,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         Theme = settings.Theme;
         ShowImageThumbnails = settings.ShowImageThumbnails;
         MaxUnits = settings.MaxUnits;
+        GitHubToken = settings.GitHubToken;
         OnPropertyChanged(nameof(HotkeyText));
         OnPropertyChanged(nameof(UnitCountText));
     }

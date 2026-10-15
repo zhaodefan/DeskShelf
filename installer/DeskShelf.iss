@@ -9,7 +9,6 @@
 ; 4. 卸载时提示是否保留用户数据（%APPDATA%\DeskShelf），默认保留。
 
 #define AppName "DeskShelf"
-#define AppVersion "1.1.0"
 #define AppPublisher "zhaodefan"
 #define AppUrl "https://github.com/zhaodefan/DeskShelf"
 #define ExeName "DeskShelf.exe"
@@ -17,6 +16,22 @@
 ; （Iscc 解析文件路径时以「当前工作目录」为基准，不能靠相对路径猜测）
 #ifndef RepoRoot
   #define RepoRoot "."
+#endif
+
+; 版本号从 Directory.Build.props 读取（单一来源）。
+;
+; 为什么不再硬编码：程序集版本由 Directory.Build.props 的 <Version> 决定，
+; 而安装包文件名/注册表版本由这里的 AppVersion 决定；两处手写必然会漂移
+; （实际发生过：构建 1.1.0 却产出 DeskShelf-1.0.99-setup.exe）。
+; 命令行仍然可以用 /DAppVersion=x.y.z 覆盖。
+; 版本号：由发布脚本以 /DAppVersion=x.y.z 传入（与 Directory.Build.props 同源）。
+;
+; 为什么不硬编码：程序集版本由 Directory.Build.props 的 <Version> 决定，
+; 安装包文件名与注册表版本由这里的 AppVersion 决定；两处手写必然会漂移
+; （实际发生过：构建 1.1.0 却产出 DeskShelf-1.0.99-setup.exe）。
+; 这里保留兜底值，并用 #ifndef 让命令行传值优先，同时让脚本单独编译时也能出包。
+#ifndef AppVersion
+  #define AppVersion "0.0.0-dev"
 #endif
 
 [Setup]
