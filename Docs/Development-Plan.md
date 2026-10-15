@@ -490,7 +490,7 @@ Windows 的 OLE 拖放协议里，一次拖拽必须由**拖源**主动发起：
 
 **发布前修掉的最后一个真实缺陷**：单文件发布（`PublishSingleFile`）后 pack URI 解析失败，
 而 `H.NotifyIcon` 要求 `ImageSource` 必须带 `UriSource`，导致托盘图标抛
-`UriFormatException`。修正为：优先从程序目录旁的同名 `DeskShelf.ico` 以文件 URI 加载，
+`UriFormatException`。修正为：优先从程序目录旁的同名 `deskshelf.ico` 以文件 URI 加载，
 pack URI 作为回退；发布目标显式复制该图标（单文件发布会过滤 `None` 内容项）。
 
 **打包踩坑记录**（都写进了脚本注释）：

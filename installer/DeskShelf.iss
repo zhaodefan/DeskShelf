@@ -31,16 +31,19 @@ AppUpdatesURL={#AppUrl}/releases
 VersionInfoVersion={#AppVersion}
 
 ; —— 安装范围与权限 ——
+; 严格 per-user 安装：不提供「为所有用户安装」选项。
+; 原因：允许提权会把程序装进 Program Files / ProgramData，而卸载项与快捷方式分散到
+; 机器级位置，一旦注册表项被清理就会留下「删不掉的孤儿目录」（v1.0.0 实际踩到过）。
+; 与「开机自启写 HKCU、数据写 %APPDATA%」的设计保持一致。
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
-DefaultDirName={autopf}\{#AppName}
+DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
 
 ; —— 外观 ——
 WizardStyle=modern
-SetupIconFile={#RepoRoot}\src\DeskShelf.App\Assets\DeskShelf.ico
+SetupIconFile={#RepoRoot}\src\DeskShelf.App\Assets\deskshelf.ico
 UninstallDisplayIcon={app}\{#ExeName}
 UninstallDisplayName={#AppName}
 
@@ -71,7 +74,7 @@ Name: "startup"; Description: "开机自动启动（登录后自动运行）"; G
 
 [Files]
 Source: "{#RepoRoot}\artifacts\publish\win-x64\DeskShelf.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#RepoRoot}\artifacts\publish\win-x64\DeskShelf.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}\artifacts\publish\win-x64\deskshelf.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme
 Source: "{#RepoRoot}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
@@ -97,24 +100,53 @@ Filename: "{cmd}"; Parameters: "/c taskkill /IM {#ExeName} /F"; Flags: runhidden
 Type: filesandordirs; Name: "{app}\logs"
 
 [Code]
-// 卸载时询问是否保留用户数据（默认保留，避免误删用户暂存内容）
+// 卸载时处理用户数据（%APPDATA%\DeskShelf）。
+//
+// 三条规则，按优先级：
+//   1. 静默卸载（/SILENT 或 /VERYSILENT）—— 一律【保留】数据。
+//      原因：静默模式下 MsgBox 不会真正询问，返回的按钮不可靠；而「卸载时误删用户
+//      暂存内容」属于不可接受的数据损失。需要清理请显式加 /DELETEUSERDATA。
+//   2. 交互卸载 —— 弹窗询问，默认按钮是「否」（保留）。
+//   3. 显式 /DELETEUSERDATA —— 无论静默与否都删除，供自动化清理使用。
+function DeleteUserDataRequested(): Boolean;
+begin
+  Result := ExpandConstant('{param:DELETEUSERDATA|0}') = '1';
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: String;
+  ShouldDelete: Boolean;
 begin
-  if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep <> usPostUninstall then
+    Exit;
+
+  DataDir := ExpandConstant('{userappdata}\DeskShelf');
+  if not DirExists(DataDir) then
+    Exit;
+
+  if DeleteUserDataRequested() then
   begin
-    DataDir := ExpandConstant('{userappdata}\DeskShelf');
-    if DirExists(DataDir) then
-    begin
-      if MsgBox('是否同时删除 DeskShelf 的用户数据？' + #13#10 + #13#10 +
-                DataDir + #13#10 + #13#10 +
-                '其中包含你暂存的文本 / 图片 / 文件夹路径与设置。' + #13#10 +
-                '选择「否」将保留这些数据，便于以后重新安装时继续使用。',
-                mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
-      begin
-        DelTree(DataDir, True, True, True);
-      end;
-    end;
+    ShouldDelete := True;
+  end
+  else if UninstallSilent() then
+  begin
+    // 静默卸载：保留数据（并在日志里说明，便于排查）
+    Log('保留用户数据目录（静默卸载默认保留）：' + DataDir);
+    ShouldDelete := False;
+  end
+  else
+  begin
+    ShouldDelete := MsgBox('是否同时删除 DeskShelf 的用户数据？' + #13#10 + #13#10 +
+                           DataDir + #13#10 + #13#10 +
+                           '其中包含你暂存的文本 / 图片 / 文件夹路径与设置。' + #13#10 +
+                           '选择「否」将保留这些数据，便于以后重新安装时继续使用。',
+                           mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+  end;
+
+  if ShouldDelete then
+  begin
+    DelTree(DataDir, True, True, True);
+    Log('已删除用户数据目录：' + DataDir);
   end;
 end;

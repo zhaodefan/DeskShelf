@@ -94,7 +94,7 @@ public sealed class TrayIconHost : IDisposable
         _logger.LogDebug("托盘图标已设置：{Source}", image.UriSource);
     }
 
-    /// <summary>优先从可执行文件所在目录读取同名的 DeskShelf.ico（发布包会带上它）。</summary>
+    /// <summary>优先从可执行文件所在目录读取同名的 deskshelf.ico（发布包会带上它）。</summary>
     private BitmapImage? TryLoadFromFile()
     {
         try
@@ -105,7 +105,7 @@ public sealed class TrayIconHost : IDisposable
                 return null;
             }
 
-            var path = Path.Combine(directory, "DeskShelf.ico");
+            var path = Path.Combine(directory, "deskshelf.ico");
             if (!File.Exists(path))
             {
                 return null;
@@ -131,8 +131,8 @@ public sealed class TrayIconHost : IDisposable
     {
         foreach (var uri in new[]
                  {
-                     "pack://application:,,,/DeskShelf;component/Assets/DeskShelf.ico",
-                     "pack://application:,,,/Assets/DeskShelf.ico",
+                     "pack://application:,,,/DeskShelf;component/Assets/deskshelf.ico",
+                     "pack://application:,,,/Assets/deskshelf.ico",
                  })
         {
             try
