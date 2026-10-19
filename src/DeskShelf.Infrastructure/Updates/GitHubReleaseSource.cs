@@ -300,85 +300,154 @@ public sealed class UpdateService : IUpdateService
 
         File.Move(temp, target);
         _logger.LogInformation("安装包下载完成：{Path}", target);
-        progress?.Report(1d);
+
+        // 这里不再 report(1.0)：进度回调经 Dispatcher 异步投递，若在下载结束后再发一次，
+        // 会覆盖调用方随后设置的「下载完成 / 准备安装 / 失败」提示。
+        // 收尾进度由调用方负责设置。
         return target;
     }
 
+    /// <summary>安装程序使用的静默参数。</summary>
+    /// <remarks>
+    /// <para><c>/VERYSILENT</c>：由 helper 进程在后台启动，不需要任何界面。</para>
+    /// <para><c>/SUPPRESSMSGBOXES</c> + <c>/NORESTART</c> + <c>/NOCANCEL</c>：不弹窗、不重启、不可被打断。</para>
+    /// <para>
+    /// 注意<b>不能</b>依赖 <c>/FORCECLOSEAPPLICATIONS</c> 解决「程序正在运行」的互斥体提示：
+    /// Inno Setup 的 AppMutex 检查发生在应用关闭机制之前，弹窗被 SUPPRESS 后会默认选择「取消」，
+    /// 导致退出码 1。正确做法见 <see cref="RunInstallerAsync"/>：先用一个独立的 helper 进程
+    /// 等本程序退出，再由它执行安装。
+    /// </para>
+    /// </remarks>
+    public const string SilentInstallerArguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL";
+
     /// <inheritdoc />
-    public async Task<UpdateInstallResult> RunInstallerAsync(
+    /// <remarks>
+    /// 为什么不能直接启动安装程序：安装包设置了 <c>AppMutex</c>，检测到本程序仍在运行时
+    /// 会弹窗要求先关闭；该弹窗被 <c>/SUPPRESSMSGBOXES</c> 压掉后自动选择「取消」，
+    /// 安装直接中止（退出码 1）。
+    ///
+    /// 因此这里改用一个 **helper 进程**：它先等本进程退出（安装包才能顺利接手），
+    /// 然后静默运行安装程序，最后重新启动新版本。本方法返回后调用方应立即关闭应用。
+    /// </remarks>
+    public Task<UpdateInstallResult> RunInstallerAsync(
         string installerPath,
         bool relaunchAfterInstall = true,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(installerPath) || !File.Exists(installerPath))
         {
-            return new UpdateInstallResult(false, "安装包不存在，请重新下载。");
+            return Task.FromResult(new UpdateInstallResult(false, "安装包不存在，请重新下载。"));
         }
-
-        // /SILENT 而不是 /VERYSILENT：保留进度窗口，用户能看到升级在进行中；
-        // /SUPPRESSMSGBOXES 避免任何弹窗阻塞；/NORESTART 防止误触发重启。
-        var arguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL";
 
         try
         {
+            var currentProcessId = Environment.ProcessId;
+            var exePath = Environment.ProcessPath;
+
+            if (string.IsNullOrWhiteSpace(exePath))
+            {
+                return Task.FromResult(new UpdateInstallResult(false, "无法定位当前程序路径，请手动安装。"));
+            }
+
+            var helperDirectory = System.IO.Path.Combine(_paths.Root, DownloadFolderName);
+            Directory.CreateDirectory(helperDirectory);
+
+            var helperPath = System.IO.Path.Combine(helperDirectory, "apply-update.cmd");
+            File.WriteAllText(helperPath, BuildHelperScript(currentProcessId, installerPath, exePath, relaunchAfterInstall), System.Text.Encoding.Default);
+
+            _logger.LogInformation(
+                "启动更新 helper（等待 PID {Pid} 退出后安装 {Installer}）。",
+                currentProcessId, Path.GetFileName(installerPath));
+
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = installerPath,
-                Arguments = arguments,
-                // 安装程序需要提升/独立运行环境，交给 Shell 启动
+                FileName = helperPath,
                 UseShellExecute = true,
-                WorkingDirectory = Path.GetDirectoryName(installerPath) ?? Environment.CurrentDirectory,
+
+                // 完全脱离本进程：否则关闭应用时可能连带终止 helper
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+                CreateNoWindow = true,
+                WorkingDirectory = helperDirectory,
             };
 
-            using var process = System.Diagnostics.Process.Start(startInfo);
-            if (process is null)
+            var helper = System.Diagnostics.Process.Start(startInfo);
+            if (helper is null)
             {
-                return new UpdateInstallResult(false, "无法启动安装程序。");
+                return Task.FromResult(new UpdateInstallResult(false, "无法启动更新程序。"));
             }
 
-            _logger.LogInformation("已启动安装程序（PID {Pid}），等待其结束。", process.Id);
-
-            // 不能用 using + WaitForExit 的同步重载：需要带超时的等待，避免安装器卡住导致进程堆积
-            var exited = await WaitForExitAsync(process, TimeSpan.FromMinutes(5), cancellationToken).ConfigureAwait(false);
-            if (!exited)
-            {
-                return new UpdateInstallResult(false, "安装程序在 5 分钟内未结束，请手动完成安装。");
-            }
-
-            if (process.ExitCode != 0)
-            {
-                _logger.LogWarning("安装程序退出码 {Code}。", process.ExitCode);
-                return new UpdateInstallResult(false, $"安装程序返回退出码 {process.ExitCode}，升级可能未完成。");
-            }
-
-            _logger.LogInformation("升级安装完成。");
-            _ = relaunchAfterInstall;
-            return new UpdateInstallResult(true, "升级完成。");
+            _logger.LogInformation("更新 helper 已启动（PID {Pid}）。", helper.Id);
+            return Task.FromResult(new UpdateInstallResult(
+                true,
+                "正在安装更新，程序即将退出并自动重启。",
+                RelaunchRequired: relaunchAfterInstall));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "运行安装程序失败：{Path}", installerPath);
-            return new UpdateInstallResult(false, $"启动安装程序失败：{ex.Message}");
+            _logger.LogError(ex, "启动更新 helper 失败：{Path}", installerPath);
+            return Task.FromResult(new UpdateInstallResult(false, $"启动更新程序失败：{ex.Message}"));
         }
     }
 
-    private static async Task<bool> WaitForExitAsync(
-        System.Diagnostics.Process process,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// 生成 helper 脚本内容。
+    /// </summary>
+    /// <remarks>
+    /// 用批处理而不是把逻辑塞进命令行的原因：需要「等待进程退出 + 顺序执行 + 重新启动」三步，
+    /// 批处理最直白、无额外依赖，且失败路径能同时保留可诊断信息（日志文件）。
+    /// </remarks>
+    public static string BuildHelperScript(int processId, string installerPath, string exePath, bool relaunch)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(timeout);
+        // 日志放在 %TEMP% 下：路径不含引号，避免批处理里 set 语句被嵌套引号破坏
+        var logPath = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            $"DeskShelf-update-{DateTime.Now:yyyyMMdd-HHmmss}.log");
 
-        try
+        // 用 StringBuilder 保证行尾统一为 CRLF（批处理对换行敏感）
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("@echo off");
+        sb.AppendLine("setlocal enabledelayedexpansion");
+        sb.AppendLine($"set \"LOG={logPath}\"");
+        sb.AppendLine("echo update helper started >> \"%LOG%\"");
+        sb.AppendLine();
+
+        // 1) 等本程序退出（最多约 60 秒）。AppMutex 检查要求进程真的消失。
+        sb.AppendLine($"echo wait for pid {processId} >> \"%LOG%\"");
+        sb.AppendLine("set /a TRIES=0");
+        sb.AppendLine(":wait");
+        sb.AppendLine($"tasklist /FI \"PID eq {processId}\" 2>nul | find \"{processId}\" >nul");
+        sb.AppendLine("if errorlevel 1 goto install");
+        sb.AppendLine("set /a TRIES+=1");
+        sb.AppendLine("if !TRIES! GEQ 60 goto force");
+        sb.AppendLine("ping -n 2 127.0.0.1 >nul");
+        sb.AppendLine("goto wait");
+        sb.AppendLine();
+
+        // 2) 超时后强制结束（仅在用户放弃关闭时兜底）
+        sb.AppendLine(":force");
+        sb.AppendLine("echo timed out, force kill >> \"%LOG%\"");
+        sb.AppendLine($"taskkill /PID {processId} /F >nul 2>&1");
+        sb.AppendLine("ping -n 3 127.0.0.1 >nul");
+        sb.AppendLine();
+
+        // 3) 静默安装
+        sb.AppendLine(":install");
+        sb.AppendLine("echo run installer >> \"%LOG%\"");
+        sb.AppendLine($"start /wait \"\" \"{installerPath}\" {SilentInstallerArguments}");
+        sb.AppendLine("echo installer exit code %ERRORLEVEL% >> \"%LOG%\"");
+
+        // 4) 无论安装成功与否都尝试重启（成功则启动新版，失败则至少把用户拉回可用状态）
+        if (relaunch)
         {
-            await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
-            return true;
+            sb.AppendLine("echo relaunch >> \"%LOG%\"");
+            sb.AppendLine($"start \"\" \"{exePath}\"");
         }
-        catch (OperationCanceledException)
-        {
-            return process.HasExited;
-        }
+
+        sb.AppendLine("echo done >> \"%LOG%\"");
+        sb.AppendLine("endlocal");
+        sb.AppendLine("exit");
+
+        return sb.ToString();
     }
 
     /// <summary>读取当前程序集版本。</summary>

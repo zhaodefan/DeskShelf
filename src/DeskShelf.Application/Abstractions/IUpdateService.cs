@@ -57,14 +57,16 @@ public interface IUpdateService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 静默运行安装包完成升级。
+    /// 启动升级流程（接管安装、必要时重启）。
     /// </summary>
     /// <param name="installerPath">安装包本地路径。</param>
     /// <param name="relaunchAfterInstall">安装完成后是否自动重启应用。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>安装结果。</returns>
+    /// <returns>升级结果。</returns>
     /// <remarks>
-    /// 调用方（表现层）在调用本方法后应立即退出应用，让安装程序可以替换正在使用的文件。
+    /// 安装包会检测「本程序是否仍在运行」，因此实现方必须先用独立进程等待本程序退出，
+    /// 再由它执行静默安装。本方法返回 <see cref="UpdateInstallResult.RelaunchRequired"/>
+    /// 时，调用方应立即关闭应用。
     /// </remarks>
     Task<UpdateInstallResult> RunInstallerAsync(
         string installerPath,
@@ -73,6 +75,9 @@ public interface IUpdateService
 }
 
 /// <summary>在线安装结果。</summary>
-/// <param name="Success">安装程序是否成功结束。</param>
+/// <param name="Success">安装流程是否已成功启动。</param>
 /// <param name="Message">给用户看的说明。</param>
-public sealed record UpdateInstallResult(bool Success, string Message);
+/// <param name="RelaunchRequired">
+/// 是否需要在返回后立刻关闭应用：安装由独立进程接管，只有本程序退出后才会真正开始安装。
+/// </param>
+public sealed record UpdateInstallResult(bool Success, string Message, bool RelaunchRequired = false);

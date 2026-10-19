@@ -368,7 +368,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
             UpdateStatus = isPortable
                 ? "下载完成。便携版需要手动解压替换，已为你打开所在目录。"
-                : "下载完成，正在安装…（应用会短暂退出，随后自动重启）";
+                : "下载完成，准备安装…";
 
             if (isPortable)
             {
@@ -379,7 +379,8 @@ public sealed partial class SettingsViewModel : ObservableObject
                 return;
             }
 
-            // 交给安装程序接棒：调用方（视图）随后会结束本进程
+            // 安装包检测到本程序在运行会拒绝安装，因此交给独立进程接管：
+            // 它等我们退出后再静默安装，然后重启新版本。
             var install = await _updates
                 .RunInstallerAsync(installerPath, relaunchAfterInstall: true, token)
                 .ConfigureAwait(true);
@@ -391,8 +392,10 @@ public sealed partial class SettingsViewModel : ObservableObject
                 return;
             }
 
-            UpdateStatus = "升级完成，正在重启…";
-            if (ShutdownApplicationAsync is not null)
+            UpdateStatus = install.Message;
+
+            // 必须先退出：helper 会等本进程结束后才开始安装
+            if (install.RelaunchRequired && ShutdownApplicationAsync is not null)
             {
                 await ShutdownApplicationAsync().ConfigureAwait(true);
             }

@@ -72,7 +72,11 @@ public sealed class FakeUpdateService : IUpdateService
     public bool FailDownload { get; set; }
 
     /// <summary>安装程序运行结果。</summary>
-    public UpdateInstallResult InstallResult { get; set; } = new(true, "升级完成。");
+    /// <remarks>
+    /// 默认带 <c>RelaunchRequired: true</c>：真实实现启动 helper 后会要求调用方立刻关闭应用，
+    /// 否则安装包会因「程序正在运行」拒绝安装（AppMutex 检查）。
+    /// </remarks>
+    public UpdateInstallResult InstallResult { get; set; } = new(true, "正在安装更新，程序即将退出。", RelaunchRequired: true);
 
     /// <summary>检查次数。</summary>
     public int CheckCount { get; private set; }
@@ -106,8 +110,9 @@ public sealed class FakeUpdateService : IUpdateService
             throw new InvalidOperationException("模拟下载失败");
         }
 
+        // 只报告中间进度，不报告 1.0：真实实现同样不在下载结束时再报一次，
+        // 否则异步投递的进度回调会覆盖调用方随后设置的收尾提示。
         progress?.Report(0.5d);
-        progress?.Report(1d);
         return Task.FromResult(DownloadPath);
     }
 

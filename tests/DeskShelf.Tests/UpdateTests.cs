@@ -331,6 +331,61 @@ public sealed class UpdateFlowTests
         Assert.Equal("ghp_test_token", releases.LastAccessToken?.Trim());
     }
 
+    // ————————————————————————— 更新 helper —————————————————————————
+
+    /// <summary>
+    /// 更新 helper 脚本必须满足的顺序要求，缺一就会重演「退出码 1」的失败：
+    /// 先等本进程退出（否则安装包因 AppMutex 拒绝安装），再静默安装，最后重启。
+    /// </summary>
+    [Fact]
+    public void BuildHelperScript_WaitsForThisProcessThenInstallsThenRelaunches()
+    {
+        var script = UpdateService.BuildHelperScript(
+            processId: 4242,
+            installerPath: @"C:\Users\me\AppData\Roaming\DeskShelf\updates\1.2.1-setup.exe",
+            exePath: @"C:\Users\me\AppData\Local\Programs\DeskShelf\DeskShelf.exe",
+            relaunch: true);
+
+        // 1) 等待本进程退出（AppMutex 检查的前提）
+        Assert.Contains("tasklist", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("4242", script, StringComparison.Ordinal);
+
+        // 2) 用静默参数运行下载到的安装包
+        Assert.Contains("1.2.1-setup.exe", script, StringComparison.Ordinal);
+        Assert.Contains(UpdateService.SilentInstallerArguments, script, StringComparison.Ordinal);
+
+        // 3) 顺序必须在「等待」之后（用索引比较，避免"存在但顺序错"的假通过）
+        var waitIndex = script.IndexOf(":wait", StringComparison.Ordinal);
+        var installIndex = script.IndexOf(":install", StringComparison.Ordinal);
+        Assert.True(waitIndex >= 0 && installIndex > waitIndex, "安装步骤必须位于等待步骤之后");
+
+        // 4) 重启新版本，且必须在安装之后
+        Assert.Contains("DeskShelf.exe", script, StringComparison.Ordinal);
+        var relaunchIndex = script.LastIndexOf("start \"\"", StringComparison.Ordinal);
+        Assert.True(relaunchIndex > installIndex, "重启步骤必须在安装之后");
+    }
+
+    [Fact]
+    public void BuildHelperScript_WhenRelaunchDisabled_StillInstallsButDoesNotRestart()
+    {
+        var script = UpdateService.BuildHelperScript(
+            processId: 1,
+            installerPath: @"C:\tmp\setup.exe",
+            exePath: @"C:\tmp\DeskShelf.exe",
+            relaunch: false);
+
+        Assert.Contains(UpdateService.SilentInstallerArguments, script, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"{exePath}", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SilentInstallerArguments_DoNotRelyOnForceCloseApplications()
+    {
+        // /FORCECLOSEAPPLICATIONS 无法绕过 AppMutex 的「程序正在运行」提示：
+        // 弹窗被 SUPPRESS 后默认选择取消，安装直接中止（退出码 1）。
+        Assert.DoesNotContain("FORCECLOSE", UpdateService.SilentInstallerArguments, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static SettingsViewModel Create(ShelfTestContext ctx, FakeUpdateService updates)
         => new(
             ctx.Settings,

@@ -19,10 +19,10 @@
     <NeutralLanguage>zh-Hans</NeutralLanguage>
     <Company>DeskShelf</Company>
     <Product>DeskShelf</Product>
-    <VersionPrefix>1.2.1</VersionPrefix>
-    <Version>1.2.1</Version>
-    <FileVersion>1.2.1.0</FileVersion>
-    <AssemblyVersion>1.2.1.0</AssemblyVersion>
+    <VersionPrefix>1.2.2</VersionPrefix>
+    <Version>1.2.2</Version>
+    <FileVersion>1.2.2.0</FileVersion>
+    <AssemblyVersion>1.2.2.0</AssemblyVersion>
     <Copyright>Copyright (c) 2026 zhaodefan</Copyright>
     <Description>DeskShelf —— Windows 桌面置物架：置顶小面板，临时存放文本 / 图片 / 文件夹</Description>
     <RepositoryUrl>https://github.com/zhaodefan/DeskShelf</RepositoryUrl>
