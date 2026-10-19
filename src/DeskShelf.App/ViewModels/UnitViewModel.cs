@@ -58,6 +58,11 @@ public sealed partial class UnitViewModel : ObservableObject
                 FolderPath = folder.Path;
                 FolderName = folder.DisplayName;
                 break;
+            case FileUnit file:
+                FilePath = file.Path;
+                FileName = file.DisplayName;
+                FileExtension = file.Extension;
+                break;
             case ImageUnit image:
                 ImageWidth = image.PixelWidth;
                 ImageHeight = image.PixelHeight;
@@ -107,6 +112,15 @@ public sealed partial class UnitViewModel : ObservableObject
     /// <summary>文件夹名（卡片主标题）。</summary>
     public string? FolderName { get; }
 
+    /// <summary>文件完整路径（仅文件 unit 非空）。</summary>
+    public string? FilePath { get; }
+
+    /// <summary>文件名（含扩展名，卡片主标题；仅文件 unit 非空）。</summary>
+    public string? FileName { get; }
+
+    /// <summary>扩展名（含点号、小写；无扩展名为空字符串。仅文件 unit 非空）。</summary>
+    public string? FileExtension { get; }
+
     /// <summary>图片像素宽（用于占位，避免加载时布局跳动）。</summary>
     public int ImageWidth { get; }
 
@@ -126,6 +140,7 @@ public sealed partial class UnitViewModel : ObservableObject
     public string? Subtitle => Kind switch
     {
         UnitKind.Folder => FolderPath,
+        UnitKind.File => FilePath,
         UnitKind.Image => ImageMeta,
         _ => null,
     };

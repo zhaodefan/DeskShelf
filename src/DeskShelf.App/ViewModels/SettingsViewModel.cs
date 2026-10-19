@@ -40,6 +40,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>正在进行的更新操作，用于取消。</summary>
     private CancellationTokenSource? _updateCts;
 
+    /// <summary>
+    /// 是否处于「下载安装包」阶段。
+    /// </summary>
+    /// <remarks>
+    /// 进度回调可能在线程池上晚于下载结束执行，用它把过期回调挡掉，
+    /// 避免覆盖「下载完成 / 失败」这类收尾提示。
+    /// 因为是跨线程读取，声明为 volatile 保证可见性。
+    /// </remarks>
+    private volatile bool _updateDownloadActive;
+
     [ObservableProperty]
     private HotkeyGesture _hotkey = HotkeyGesture.Default;
 
@@ -354,17 +364,44 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             UpdateStatus = "正在下载安装包…";
-            var progress = new Progress<double?>(value => _dispatcher.Post(() =>
-            {
-                UpdateProgress = value;
-                UpdateStatus = value is { } percent
-                    ? $"正在下载安装包… {percent:P0}"
-                    : "正在下载安装包…";
-            }));
 
-            var installerPath = await _updates
-                .DownloadInstallerAsync(release, progress, token)
-                .ConfigureAwait(true);
+            // 进度回调会被投递到线程池（无 UI 同步上下文时 Progress<T> 的行为），
+            // 因此下载结束后仍可能有排队中的回调晚到，把后续状态文字（「下载完成」/错误信息）覆盖掉。
+            // 这里用一个下载期开关把它挡掉：回调执行时若已不在下载阶段就直接忽略。
+            _updateDownloadActive = true;
+            var progress = new Progress<double?>(value =>
+            {
+                if (!_updateDownloadActive)
+                {
+                    return;
+                }
+
+                _dispatcher.Post(() =>
+                {
+                    if (!_updateDownloadActive)
+                    {
+                        return;
+                    }
+
+                    UpdateProgress = value;
+                    UpdateStatus = value is { } percent
+                        ? $"正在下载安装包… {percent:P0}"
+                        : "正在下载安装包…";
+                });
+            });
+
+            string installerPath;
+            try
+            {
+                installerPath = await _updates
+                    .DownloadInstallerAsync(release, progress, token)
+                    .ConfigureAwait(true);
+            }
+            finally
+            {
+                // 必须在设置任何收尾状态之前关闭开关，否则晚到的进度回调仍会覆盖它
+                _updateDownloadActive = false;
+            }
 
             UpdateStatus = isPortable
                 ? "下载完成。便携版需要手动解压替换，已为你打开所在目录。"

@@ -14,6 +14,9 @@ public enum UnitKind
     /// <summary>图片 unit：可复制图片、可调用系统看图程序打开。</summary>
     Image = 1,
 
-    /// <summary>文件夹 unit（路径 unit）：仅可由资源管理器拖入，不可复制到剪贴板。</summary>
+    /// <summary>文件夹 unit（路径 unit）：仅可由资源管理器拖入，双击用资源管理器打开。</summary>
     Folder = 2,
+
+    /// <summary>文件 unit：任意文件（图片除外，图片走 <see cref="Image"/>），双击用默认程序打开。</summary>
+    File = 3,
 }

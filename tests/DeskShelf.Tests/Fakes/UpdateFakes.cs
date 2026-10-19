@@ -90,6 +90,12 @@ public sealed class FakeUpdateService : IUpdateService
     /// <summary>模拟的下载文件路径。</summary>
     public string DownloadPath { get; set; } = Path.Combine(Path.GetTempPath(), "DeskShelf-fake-setup.exe");
 
+    /// <summary>清理调用次数。</summary>
+    public int CleanupCount { get; private set; }
+
+    /// <inheritdoc />
+    public void CleanupDownloadedArtifacts() => CleanupCount++;
+
     /// <inheritdoc />
     public Task<UpdateCheckResult> CheckAsync(bool includePrerelease = false, CancellationToken cancellationToken = default)
     {

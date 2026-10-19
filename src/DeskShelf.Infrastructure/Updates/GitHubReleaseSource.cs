@@ -248,6 +248,46 @@ public sealed class UpdateService : IUpdateService
             $"已是最新版本（{CurrentVersion}）。");
     }
 
+    /// <summary>
+    /// 清理 updates 目录里的残留文件（启动时调用）。
+    /// </summary>
+    /// <remarks>
+    /// 只删两类**由本程序自己产生**的临时文件，绝不触碰其它内容：
+    /// <list type="bullet">
+    /// <item><c>apply-update.cmd</c>：上次升级用过的 helper 脚本，任务结束后已无用；</item>
+    /// <item><c>*.part</c>：上次下载到一半的临时文件（真正的安装包由 helper 在升级成功后删除）。</item>
+    /// </list>
+    /// 安装包本身**故意不删**：若上次升级失败，保留它便于用户重试与排查。
+    /// </remarks>
+    public void CleanupDownloadedArtifacts()
+    {
+        var directory = System.IO.Path.Combine(_paths.Root, DownloadFolderName);
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            var helper = System.IO.Path.Combine(directory, "apply-update.cmd");
+            if (File.Exists(helper))
+            {
+                File.Delete(helper);
+                _logger.LogDebug("已清理上次升级使用的 helper 脚本。");
+            }
+
+            foreach (var stale in Directory.EnumerateFiles(directory, "*.part"))
+            {
+                File.Delete(stale);
+                _logger.LogDebug("已清理未完成的下载临时文件：{Path}", stale);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 清理失败不影响启动
+            _logger.LogWarning(ex, "清理下载目录残留失败。");
+        }
+    }
     /// <inheritdoc />
     public async Task<string> DownloadInstallerAsync(
         AppRelease release,
@@ -434,7 +474,15 @@ public sealed class UpdateService : IUpdateService
         sb.AppendLine(":install");
         sb.AppendLine("echo run installer >> \"%LOG%\"");
         sb.AppendLine($"start /wait \"\" \"{installerPath}\" {SilentInstallerArguments}");
-        sb.AppendLine("echo installer exit code %ERRORLEVEL% >> \"%LOG%\"");
+
+        // 立刻捕获退出码：后续任何命令（尤其是 del）都会覆盖 ERRORLEVEL
+        sb.AppendLine("set \"RC=%ERRORLEVEL%\"");
+        sb.AppendLine("echo installer exit code %RC% >> \"%LOG%\"");
+
+        // 3b) 安装成功后删除安装包（每次更新约 64 MB，不清理会一直累积）。
+        // 安装失败时**保留**文件，便于用户重试或排查。
+        sb.AppendLine("if \"%RC%\"==\"0\" del /f /q \"" + installerPath + "\" >nul 2>&1");
+        sb.AppendLine("if \"%RC%\"==\"0\" echo removed installer >> \"%LOG%\"");
 
         // 4) 无论安装成功与否都尝试重启（成功则启动新版，失败则至少把用户拉回可用状态）
         if (relaunch)

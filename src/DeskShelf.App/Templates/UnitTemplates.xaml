@@ -229,6 +229,38 @@
   </DataTemplate>
   <!--#endregion -->
 
+  <!--#region 内容模板：文件（ViewKey = View.Unit.File） -->
+  <DataTemplate x:Key="View.Unit.File" DataType="{x:Type vm:UnitViewModel}">
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+
+      <ctl:Icon Grid.Column="0"
+                Geometry="{StaticResource Icon.File}"
+                Style="{StaticResource Icon.Filled}"
+                Foreground="{DynamicResource Brush.Accent}"
+                Size="16"
+                VerticalAlignment="Top"
+                Margin="0,2,8,0" />
+
+      <StackPanel Grid.Column="1">
+        <TextBlock Style="{StaticResource Text.Body}"
+                   Text="{Binding FileName}"
+                   TextTrimming="CharacterEllipsis"
+                   TextWrapping="NoWrap"
+                   FontWeight="SemiBold"
+                   ToolTip="{Binding FileName}" />
+        <TextBlock Style="{StaticResource Text.Caption}"
+                   Text="{Binding FilePath}"
+                   Margin="0,3,0,0"
+                   ToolTip="{Binding FilePath}" />
+      </StackPanel>
+    </Grid>
+  </DataTemplate>
+  <!--#endregion -->
+
   <!--#region 兜底模板：未注册的 unit 类型不至于让界面崩溃 -->
   <DataTemplate x:Key="View.Unit.Unknown" DataType="{x:Type vm:UnitViewModel}">
     <TextBlock Style="{StaticResource Text.Secondary}" Text="未知类型的内容" />

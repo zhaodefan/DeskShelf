@@ -62,6 +62,16 @@ public static class UnitCatalog
             SupportsPaste: false,
             SupportsDrop: true,
             DefaultMaxLines: 2),
+
+        [UnitKind.File] = new UnitPresentation(
+            Kind: UnitKind.File,
+            DisplayName: "文件",
+            IconKey: "Icon.File",
+            ViewKey: "View.Unit.File",
+            Capabilities: new UnitCapabilities(CanCopyToClipboard: true, CanEditText: false, OpenBehavior: UnitOpenBehavior.OpenFile),
+            SupportsPaste: false,
+            SupportsDrop: true,
+            DefaultMaxLines: 2),
     };
 
     /// <summary>全部已注册的 unit 类型。</summary>

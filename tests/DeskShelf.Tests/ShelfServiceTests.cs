@@ -86,9 +86,10 @@ public sealed class ShelfServiceTests
     }
 
     [Fact]
-    public async Task Ingest_NonImageFile_StoresItsParentFolder()
+    public async Task Ingest_NonImageFile_CreatesFileUnit()
     {
-        // 用户拖一个普通文件进来时，意图通常是「我要经常回到这个目录」
+        // 行为变更（v1.3.0）：引入文件 unit 后，拖普通文件存文件本身，
+        // 不再像以前那样降级为「其所在目录」。
         var ctx = new ShelfTestContext();
         var folder = Path.Combine(Path.GetTempPath(), "DeskShelf-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
@@ -100,9 +101,12 @@ public sealed class ShelfServiceTests
             var result = await ctx.Service.IngestAsync(RawContent.FromPaths(new[] { file }, UnitOrigin.DragDrop));
 
             Assert.True(result.Success);
-            var unit = Assert.IsType<FolderUnit>(Assert.Single(ctx.Shelf.Units));
-            Assert.Equal(FolderUnit.Normalize(folder), unit.Path);
-            Assert.Contains("所在目录", result.Message, StringComparison.Ordinal);
+            var unit = Assert.IsType<FileUnit>(Assert.Single(ctx.Shelf.Units));
+            Assert.Equal(FileUnit.Normalize(file), unit.Path);
+            Assert.Equal("notes.txt", unit.DisplayName);
+            Assert.Equal(".txt", unit.Extension);
+            Assert.Equal(UnitKind.File, unit.Kind);
+            Assert.NotEqual(UnitOpenBehavior.None, unit.Capabilities.OpenBehavior);
         }
         finally
         {
@@ -111,8 +115,9 @@ public sealed class ShelfServiceTests
     }
 
     [Fact]
-    public async Task Ingest_MultipleFilesInSameFolder_StoresFolderOnlyOnce()
+    public async Task Ingest_MultipleFilesInSameFolder_CreatesOneUnitPerFile()
     {
+        // 同一目录下的多个文件不再折叠成一个文件夹 unit，而是一一对应
         var ctx = new ShelfTestContext();
         var folder = Path.Combine(Path.GetTempPath(), "DeskShelf-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
@@ -125,7 +130,32 @@ public sealed class ShelfServiceTests
         {
             await ctx.Service.IngestAsync(RawContent.FromPaths(new[] { first, second }, UnitOrigin.DragDrop));
 
+            Assert.Equal(2, ctx.Shelf.Units.Count);
+            Assert.All(ctx.Shelf.Units, u => Assert.Equal(UnitKind.File, u.Kind));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Ingest_DuplicateFile_SkippedOnce()
+    {
+        // 同一个文件拖两次（或同时拖入重复项）只应产生一个 unit
+        var ctx = new ShelfTestContext();
+        var folder = Path.Combine(Path.GetTempPath(), "DeskShelf-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var file = Path.Combine(folder, "dup.txt");
+        await File.WriteAllTextAsync(file, "x");
+
+        try
+        {
+            var result = await ctx.Service.IngestAsync(RawContent.FromPaths(new[] { file, file }, UnitOrigin.DragDrop));
+
+            Assert.True(result.Success);
             Assert.Single(ctx.Shelf.Units);
+            Assert.Contains("重复", result.Message, StringComparison.Ordinal);
         }
         finally
         {

@@ -15,11 +15,14 @@ namespace DeskShelf.Infrastructure.Content;
 /// <remarks>
 /// 路径类内容的处理规则（按实测使用习惯确定）：
 /// <list type="bullet">
-/// <item>拖入<b>文件夹</b> → 直接存该文件夹；</item>
-/// <item>拖入<b>图片文件</b> → 存为图片 unit；</item>
-/// <item>拖入<b>其它文件</b> → 存其<b>所在目录</b>（用户意图通常是「我要经常回到这个目录」）；</item>
+/// <item>拖入<b>文件夹</b> → 存该文件夹 unit；</item>
+/// <item>拖入<b>图片文件</b> → 存为图片 unit（可看缩略图、可复制图片本身）；</item>
+/// <item>拖入<b>其它任意文件</b> → 存为文件 unit（双击用默认程序打开）；</item>
 /// <item>拖入<b>快捷方式（.lnk）</b> → 先解析目标，再按上述规则处理。</item>
 /// </list>
+/// 历史说明：引入文件 unit 之前，拖入普通文件会被存成「其所在目录」
+/// （当时意图是「我要经常回到这个目录」）。有了文件 unit 后该降级行为已移除 ——
+/// 想存目录就直接拖目录，拖单个文件不会再意外带入整个目录。
 /// </remarks>
 public sealed class UnitContentFactory : IUnitContentFactory
 {
@@ -106,8 +109,9 @@ public sealed class UnitContentFactory : IUnitContentFactory
         var units = new List<ShelfUnit>();
         var warnings = new List<string>();
         var seenFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var skippedMissing = 0;
-        var fromFileFolders = 0;
+        var skippedDuplicateFiles = 0;
         var truncated = paths.Count > MaxDroppedItems;
 
         foreach (var rawPath in paths.Take(MaxDroppedItems))
@@ -133,7 +137,7 @@ public sealed class UnitContentFactory : IUnitContentFactory
                 continue;
             }
 
-            // 单个图片文件：按图片 unit 处理（可复制图片、可用看图程序打开）
+            // 图片文件：按图片 unit 处理（可看缩略图、可复制图片本身就是图片、可用看图程序打开）
             var imageUnit = await TryCreateImageUnitFromFileAsync(path, content.Origin, cancellationToken).ConfigureAwait(false);
             if (imageUnit is not null)
             {
@@ -141,19 +145,11 @@ public sealed class UnitContentFactory : IUnitContentFactory
                 continue;
             }
 
-            // 其它文件：用户拖文件的意图通常是「我要经常回到这个目录」，因此存其所在目录
-            var parent = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
+            // 其它任意文件：存为文件 unit，双击用系统默认程序打开
+            if (!AddFile(path, content.Origin, units, seenFiles))
             {
-                if (AddFolder(parent, content.Origin, units, seenFolders))
-                {
-                    fromFileFolders++;
-                }
-
-                continue;
+                skippedDuplicateFiles++;
             }
-
-            skippedMissing++;
         }
 
         if (truncated)
@@ -161,9 +157,9 @@ public sealed class UnitContentFactory : IUnitContentFactory
             warnings.Add($"一次最多处理 {MaxDroppedItems} 项，超出部分已忽略");
         }
 
-        if (fromFileFolders > 0)
+        if (skippedDuplicateFiles > 0)
         {
-            warnings.Add($"{fromFileFolders} 项存放的是「文件所在目录」（非图片文件本身不存放）");
+            warnings.Add($"{skippedDuplicateFiles} 个重复文件已跳过");
         }
 
         if (skippedMissing > 0)
@@ -172,17 +168,31 @@ public sealed class UnitContentFactory : IUnitContentFactory
         }
 
         _logger.LogDebug(
-            "拖入内容解析完成：{Folders} 个文件夹（其中 {FromFiles} 个来自文件所在目录）/ {Images} 个图片，{Missing} 个失效路径。",
+            "拖入内容解析完成：{Folders} 个文件夹 / {Images} 个图片 / {Files} 个文件，{Missing} 个失效路径，{Duplicates} 个重复文件。",
             units.Count(u => u.Kind == UnitKind.Folder),
-            fromFileFolders,
             units.Count(u => u.Kind == UnitKind.Image),
-            skippedMissing);
+            units.Count(u => u.Kind == UnitKind.File),
+            skippedMissing,
+            skippedDuplicateFiles);
 
         return units.Count == 0
             ? UnitCreationResult.Unsupported(warnings.ToArray())
             : warnings.Count == 0
                 ? UnitCreationResult.Success(units)
                 : UnitCreationResult.Partial(units, warnings);
+    }
+
+    /// <summary>加入文件 unit，返回是否为新加入（同一文件只存一次）。</summary>
+    private bool AddFile(string path, UnitOrigin origin, List<ShelfUnit> units, HashSet<string> seen)
+    {
+        var normalized = FileUnit.Normalize(path);
+        if (normalized.Length == 0 || !seen.Add(normalized))
+        {
+            return false;
+        }
+
+        units.Add(new FileUnit(normalized, UnitId.New(), origin, _clock()));
+        return true;
     }
 
     /// <summary>加入文件夹 unit，返回是否为新加入（同一目录只存一次）。</summary>

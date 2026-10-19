@@ -199,11 +199,24 @@ public sealed class ShelfService
             payload = RawContent.FromText(joined);
             message = copyable.Count == 1 ? "已复制文本。" : $"已复制 {copyable.Count} 段文本（合并为一段）。";
         }
-        else if (copyable.All(u => u.Kind == UnitKind.Folder))
+        else if (copyable.All(u => u is FolderUnit or FileUnit))
         {
-            var paths = copyable.Select(u => ((FolderUnit)u).Path).ToList();
+            // 文件夹与文件都是「路径类」：统一以 FileDrop 形式写入剪贴板，
+            // 可以直接粘贴到资源管理器。两者混选也成立，因此按类型判断而非按 UnitKind 分支。
+            var paths = copyable
+                .Select(u => u switch
+                {
+                    FolderUnit folder => folder.Path,
+                    FileUnit file => file.Path,
+                    _ => string.Empty,
+                })
+                .Where(p => p.Length > 0)
+                .ToList();
+
             payload = RawContent.FromPaths(paths);
-            message = copyable.Count == 1 ? "已复制路径。" : $"已复制 {copyable.Count} 个路径。";
+            message = copyable.Count == 1
+                ? (copyable[0] is FileUnit ? "已复制文件。" : "已复制路径。")
+                : $"已复制 {copyable.Count} 个路径。";
         }
         else if (copyable.Count == 1)
         {
@@ -366,6 +379,8 @@ public sealed class ShelfService
                 return RawContent.FromText(text.Text);
             case FolderUnit folder:
                 return RawContent.FromPaths(new[] { folder.Path });
+            case FileUnit file:
+                return RawContent.FromPaths(new[] { file.Path });
             case ImageUnit image:
                 // 图片必须回读原始字节才能真正复制到剪贴板；读取失败时降级为抠出 ImageUnit 的键值
                 var bytes = await _imageStore.ReadAsync(image.ImageKey, cancellationToken).ConfigureAwait(true);

@@ -34,6 +34,9 @@ public sealed class ShellLauncher : ISystemLauncher
             case UnitOpenBehavior.OpenFolder when unit is FolderUnit folder:
                 return Task.FromResult(OpenFolder(folder.Path));
 
+            case UnitOpenBehavior.OpenFile when unit is FileUnit file:
+                return Task.FromResult(OpenFile(file.Path));
+
             case UnitOpenBehavior.OpenImage when unit is ImageUnit image:
                 return Task.FromResult(TryShellExecute(ResolveImagePath(image)));
 
@@ -51,6 +54,7 @@ public sealed class ShellLauncher : ISystemLauncher
         return unit switch
         {
             FolderUnit folder => Task.FromResult(RevealPath(folder.Path)),
+            FileUnit file => Task.FromResult(RevealPath(file.Path)),
             ImageUnit image => Task.FromResult(RevealPath(ResolveImagePath(image))),
             _ => Task.FromResult(false),
         };
@@ -90,6 +94,18 @@ public sealed class ShellLauncher : ISystemLauncher
 
         _logger.LogWarning("图片文件缺失：{Path}", full);
         return full;
+    }
+
+    /// <summary>用系统默认程序打开文件（关联由注册表决定，不做扩展名白名单）。</summary>
+    private bool OpenFile(string path)
+    {
+        if (!File.Exists(path))
+        {
+            _logger.LogWarning("文件不存在，无法打开：{Path}", path);
+            return false;
+        }
+
+        return TryShellExecute(path);
     }
 
     private bool OpenFolder(string path)

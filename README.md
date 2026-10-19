@@ -8,7 +8,7 @@
 
 - 目标框架：`.NET 8 (net8.0-windows)` + `WPF`
 - 平台：Windows 10 1809+ / Windows 11（64 位）
-- 当前版本：**v1.2.3**（应用内在线更新 + 新建文本 unit + 若干修复）
+- 当前版本：**v1.3.0**（新增文件 unit：任意文件拖入 + 双击打开）
 
 ---
 
@@ -61,9 +61,9 @@ powershell -File tools\Build-Release.ps1 -Version 1.2.0
 | 文本 unit | `Ctrl+V` 粘贴；面板内展示文本；双击行内编辑；`Ctrl+C` 复制文本 |
 | 图片 unit | 粘贴图片 / 拖入图片文件；展示缩略图；双击用系统看图程序打开；`Ctrl+C` 复制图片 |
 | 文件夹 unit | 从资源管理器拖入；展示「文件夹图标 + 路径」；双击用资源管理器打开；按需求**不参与复制** |
-| 拖入普通文件 | 自动存**它所在的目录**（拖文件的真实意图通常是「我要经常回到这个目录」）；同一目录只存一次 |
+| 文件 unit | 任意文件（图片除外）拖入即存；展示「文件图标 + 文件名 + 路径」；**双击用系统默认程序打开**；可复制为文件（可粘贴到资源管理器） |
 | 拖入快捷方式 | `.lnk` 先解析真实目标，再按上述规则处理 |
-| 拖拽落盘 | 文件夹、图片文件、普通文件均可拖入；无法识别的格式会给出明确提示 |
+| 拖拽落盘 | 文件夹、图片、**任意文件**均可拖入；同一项只存一次；无法识别的内容会给出明确提示 |
 | 多选与撤销 | `Ctrl+点击` 多选、`Shift+点击` 区间选择；删除后 5 秒内可撤销（`Ctrl+Z` 或消息条按钮） |
 | 明暗主题 | 跟随系统 / 强制浅色 / 强制深色，在设置窗口切换并即时预览 |
 | 单实例 | 重复启动会提示并退出，避免热键冲突与数据竞争 |
@@ -141,18 +141,32 @@ src/
 3. 展示细节（图标、按钮可用性）一律来自 `UnitCatalog` 的能力声明，**禁止** `if (unit is TextUnit)` 式分支；
 4. `Domain` / `Application` 的引用中不允许出现 `PresentationFramework`。
 
-### 新增一种 unit 类型要改的地方（固定 4 处）
+### 新增一种 unit 类型要改的地方
+
+实测结论（v1.3.0 新增文件 unit 时逐项核对）：**必改 4 处，另有 2 处按需**。
+
+**必改（漏了会编译失败或行为不全）**
 
 | # | 位置 | 内容 |
 | --- | --- | --- |
-| 1 | `Domain/Units/XxxUnit.cs` | 新领域类型 + 能力声明 |
+| 1 | `Domain/Units/XxxUnit.cs` | 新领域类型 + 能力声明；并在 `UnitKind` 枚举里加一项 |
 | 2 | `Application/Catalog/UnitCatalog.cs` | 注册显示名、图标键、`ViewKey`、能力 |
-| 3 | `Infrastructure/Storage/JsonShelfStore.cs` | 持久化映射（`$type` 判别符） |
+| 3 | `Infrastructure/Storage/JsonShelfStore.cs` | 持久化映射（双向 + 磁盘判别符常量）。**漏了会重启后静默丢数据** |
 | 4 | `App/Templates/UnitTemplates.xaml` | 与 `ViewKey` **同名**的 DataTemplate |
 
+**按需（取决于新类型要不要新图标 / 新打开动作）**
+
+| # | 位置 | 何时需要 |
+| --- | --- | --- |
+| 5 | `Themes/Tokens.Light.xaml` + `Tokens.Dark.xaml` | 用到新的 `Icon.*` 几何时。**两个主题都要加**，否则切换主题后图标消失 |
+| 6 | `Domain/Units/UnitCapabilities.cs` + `Infrastructure/Launchers/ShellLauncher.cs` | 需要新的 `UnitOpenBehavior` 时（如 `OpenFile`），并在 `OpenAsync` 里实现对应分支 |
+
 `ShelfService`、`PanelViewModel`、模板选择器都无需改动 —— `UnitTemplateSelector` 直接以
-`UnitCatalog.ViewKey` 作为资源键查找模板。另有单测 `UnitCatalog_RegistersEveryKind`
-保证漏登记时立刻失败。
+`UnitCatalog.ViewKey` 作为资源键查找模板。
+
+三条单测兜底：`UnitCatalog_RegistersEveryKind`（漏登记立刻失败）、
+`JsonShelfStoreTests.SaveAndLoad_RoundTripsEveryRegisteredKind`（持久化漏映射立刻失败，
+且断言样本必须覆盖全部已注册类型）、`UnitCatalog_ViewKeysAreUnique`。
 
 ---
 
@@ -167,7 +181,7 @@ $env:DeskShelf_SEED_SAMPLE = "1"
 dotnet run --project .\src\DeskShelf.App\DeskShelf.App.csproj
 ```
 
-启动后会注入一条文本、一张渐变图片、一个用户主目录文件夹，覆盖三类卡片。
+启动后会注入一条文本、一张渐变图片、一个用户主目录文件夹、一个文件，覆盖四类卡片。
 不设该环境变量时**不会**有任何注入行为。
 
 ### 手工测试清单（系统级行为无法单测）

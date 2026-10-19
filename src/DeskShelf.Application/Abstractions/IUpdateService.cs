@@ -45,6 +45,14 @@ public interface IUpdateService
     Task<UpdateCheckResult> CheckAsync(bool includePrerelease = false, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 清理下载目录中的残留文件（启动时调用）。
+    /// </summary>
+    /// <remarks>
+    /// 只删除本程序自己产生的临时文件（helper 脚本、未完成的 <c>.part</c>），
+    /// 不删除已下载完成的安装包 —— 升级失败时保留它便于重试与排查。
+    /// </remarks>
+    void CleanupDownloadedArtifacts();
+    /// <summary>
     /// 下载安装包。
     /// </summary>
     /// <param name="release">目标发布。</param>

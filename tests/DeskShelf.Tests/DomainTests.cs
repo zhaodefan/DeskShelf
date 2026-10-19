@@ -50,6 +50,14 @@ public sealed class DomainTests
         // 文件夹 unit 只能由拖拽产生
         Assert.False(folder.SupportsPaste);
         Assert.True(folder.SupportsDrop);
+
+        var file = UnitCatalog.Get(UnitKind.File);
+        Assert.True(file.Capabilities.CanCopyToClipboard);      // 以 FileDrop 复制，可粘贴到资源管理器
+        Assert.False(file.Capabilities.CanEditText);
+        Assert.Equal(UnitOpenBehavior.OpenFile, file.Capabilities.OpenBehavior);
+        Assert.True(file.Capabilities.CanReveal);               // 支持「在资源管理器中显示」
+        Assert.False(file.SupportsPaste);
+        Assert.True(file.SupportsDrop);
     }
 
     [Fact]

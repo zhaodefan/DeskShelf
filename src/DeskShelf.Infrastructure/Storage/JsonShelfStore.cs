@@ -194,6 +194,10 @@ public sealed class JsonShelfStore : IShelfStore
                     var path = FolderUnit.Normalize(dto.Path);
                     return path.Length == 0 ? null : new FolderUnit(path, id, origin, createdAt);
 
+                case UnitTypeNames.File:
+                    var filePath = FileUnit.Normalize(dto.Path);
+                    return filePath.Length == 0 ? null : new FileUnit(filePath, id, origin, createdAt);
+
                 default:
                     _logger.LogWarning("未知的 unit 类型「{Type}」，已跳过（可能来自更高版本）。", dto.Type);
                     return null;
@@ -237,6 +241,14 @@ public sealed class JsonShelfStore : IShelfStore
             CreatedAt = folder.CreatedAt,
             Path = folder.Path,
         },
+        FileUnit file => new UnitDto
+        {
+            Type = UnitTypeNames.File,
+            Id = file.Id.ToString(),
+            Origin = file.Origin.ToString(),
+            CreatedAt = file.CreatedAt,
+            Path = file.Path,
+        },
         _ => throw new NotSupportedException(
             $"unit 类型 {unit.Kind} 尚未在 {nameof(JsonShelfStore)} 中登记持久化映射。"),
     };
@@ -247,6 +259,7 @@ public sealed class JsonShelfStore : IShelfStore
         public const string Text = "text";
         public const string Image = "image";
         public const string Folder = "folder";
+        public const string File = "file";
     }
 
     private sealed class ShelfDocument

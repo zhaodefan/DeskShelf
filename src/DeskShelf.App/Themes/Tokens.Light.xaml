@@ -134,6 +134,8 @@
     完整显示 —— 16×16 视口的图形缩到 14 会被裁掉边缘。
   -->
   <Geometry x:Key="Icon.TextAdd">M1.6,3.4 H12.4 M1.6,6.6 H12.4 M1.6,9.8 H7.4 M10.4,9.6 V13.8 M8.5,11.7 H12.3</Geometry>
+  <!-- 文件 unit：带折角的文档轮廓（16×16 视口，与 Icon.Folder 风格一致） -->
+  <Geometry x:Key="Icon.File">M3,1 H9.5 L13,4.5 V15 H3 Z M9.5,1 V4.5 H13</Geometry>
   <!--#endregion -->
 
 </ResourceDictionary>

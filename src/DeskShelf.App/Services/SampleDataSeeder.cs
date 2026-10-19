@@ -68,6 +68,44 @@ public sealed class SampleDataSeeder
         await _shelf.IngestAsync(
             RawContent.FromPaths(new[] { Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) }, UnitOrigin.DragDrop),
             cancellationToken: cancellationToken).ConfigureAwait(true);
+
+        // 文件 unit：优先用真实存在的系统文件，没有就在临时目录造一个，保证卡片能渲染出路径
+        var sampleFile = TryEnsureSampleFile();
+        if (sampleFile is not null)
+        {
+            await _shelf.IngestAsync(
+                RawContent.FromPaths(new[] { sampleFile }, UnitOrigin.DragDrop),
+                cancellationToken: cancellationToken).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>找一个可用于走查的文件：先试系统文件，都不存在时在临时目录写一个。</summary>
+    private string? TryEnsureSampleFile()
+    {
+        var windowsIni = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            "win.ini");
+
+        if (File.Exists(windowsIni))
+        {
+            return windowsIni;
+        }
+
+        try
+        {
+            var path = Path.Combine(Path.GetTempPath(), "DeskShelf-样例文件.txt");
+            if (!File.Exists(path))
+            {
+                File.WriteAllText(path, "这是设计走查用的样例文件，用于确认文件 unit 的卡片排版。");
+            }
+
+            return path;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogDebug(ex, "创建样例文件失败，跳过文件 unit 样例。");
+            return null;
+        }
     }
 
     /// <summary>生成一张纯色渐变样例 PNG（避免引入测试图片资源）。</summary>

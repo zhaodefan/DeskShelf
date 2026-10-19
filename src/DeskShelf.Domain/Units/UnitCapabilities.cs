@@ -12,7 +12,10 @@ public readonly record struct UnitCapabilities(
     UnitOpenBehavior OpenBehavior)
 {
     /// <summary>是否具备「在资源管理器中显示」的附加动作。</summary>
-    public bool CanReveal => OpenBehavior is UnitOpenBehavior.OpenFolder or UnitOpenBehavior.OpenImage;
+    public bool CanReveal => OpenBehavior
+        is UnitOpenBehavior.OpenFolder
+        or UnitOpenBehavior.OpenFile
+        or UnitOpenBehavior.OpenImage;
 
     /// <summary>右键菜单是否为空（没有任何可用动作）。</summary>
     public bool HasAnyAction => CanCopyToClipboard || CanEditText || OpenBehavior != UnitOpenBehavior.None;
@@ -29,4 +32,7 @@ public enum UnitOpenBehavior
 
     /// <summary>用资源管理器打开文件夹路径。</summary>
     OpenFolder = 2,
+
+    /// <summary>用系统默认程序打开该文件（由文件关联决定，例如 .pdf → 阅读器）。</summary>
+    OpenFile = 3,
 }

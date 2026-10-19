@@ -97,6 +97,15 @@ public partial class App : System.Windows.Application, IThemeApplier
         {
             _logger.LogInformation("已把旧版数据目录 %APPDATA%\\DeskTools 迁移到 %APPDATA%\\DeskShelf。");
         }
+        // 清理上次升级可能残留的 helper 脚本与未完成下载（不删已下载的安装包，便于失败重试）
+        try
+        {
+            _services!.GetService<IUpdateService>()?.CleanupDownloadedArtifacts();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "清理下载目录残留失败。");
+        }
 
         VerifyUnitCatalog();
 

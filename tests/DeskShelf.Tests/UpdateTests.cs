@@ -386,6 +386,74 @@ public sealed class UpdateFlowTests
         Assert.DoesNotContain("FORCECLOSE", UpdateService.SilentInstallerArguments, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>待办 B1：安装成功后删除安装包，避免每次升级残留 ~64 MB。</summary>
+    [Fact]
+    public void BuildHelperScript_DeletesInstallerOnlyOnSuccess()
+    {
+        var script = UpdateService.BuildHelperScript(
+            processId: 7,
+            installerPath: @"C:\updates\setup.exe",
+            exePath: @"C:\app\DeskShelf.exe",
+            relaunch: false);
+
+        // 必须先捕获退出码：del 自身会覆盖 ERRORLEVEL
+        Assert.Contains("set \"RC=%ERRORLEVEL%\"", script, StringComparison.Ordinal);
+
+        // 删除动作受 RC==0 保护 —— 失败时保留安装包以便重试
+        var deleteLine = script
+            .Split('\n')
+            .Select(l => l.Trim())
+            .Single(l => l.Contains("del /f /q", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Contains("\"%RC%\"==\"0\"", deleteLine, StringComparison.Ordinal);
+        Assert.Contains(@"C:\updates\setup.exe", deleteLine, StringComparison.Ordinal);
+    }
+
+    /// <summary>待办 B1：启动清理只动本程序产生的临时文件，不碰已下载的安装包。</summary>
+    [Fact]
+    public void CleanupDownloadedArtifacts_RemovesHelperAndPartialFilesButKeepsInstaller()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "DeskShelf-clean-" + Guid.NewGuid().ToString("N"));
+        var paths = new DeskShelf.Infrastructure.Storage.AppPaths(root);
+        paths.EnsureCreated();
+
+        var updatesDir = Path.Combine(root, "updates");
+        Directory.CreateDirectory(updatesDir);
+        var helper = Path.Combine(updatesDir, "apply-update.cmd");
+        var partial = Path.Combine(updatesDir, "1.2.4-setup.exe.part");
+        var installer = Path.Combine(updatesDir, "1.2.3-setup.exe");
+        File.WriteAllText(helper, "@echo off");
+        File.WriteAllText(partial, "half");
+        File.WriteAllText(installer, "full");
+
+        try
+        {
+            var service = new UpdateService(
+                new FakeReleaseSource(),
+                new FakeSettingsStore(),
+                paths,
+                new HttpClient(),
+                NullLogger<UpdateService>.Instance);
+
+            service.CleanupDownloadedArtifacts();
+
+            Assert.False(File.Exists(helper), "helper 脚本应被清理");
+            Assert.False(File.Exists(partial), "未完成的 .part 应被清理");
+            Assert.True(File.Exists(installer), "已下载的安装包必须保留（升级失败时用于重试）");
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch (IOException)
+            {
+                // 清理失败不影响测试结论
+            }
+        }
+    }
+
     private static SettingsViewModel Create(ShelfTestContext ctx, FakeUpdateService updates)
         => new(
             ctx.Settings,
