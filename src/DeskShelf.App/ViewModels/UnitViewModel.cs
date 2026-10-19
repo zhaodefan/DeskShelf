@@ -145,13 +145,22 @@ public sealed partial class UnitViewModel : ObservableObject
         _ => null,
     };
 
-    /// <summary>
-    /// 文本卡片是否需要在悬停/选中时才允许与鼠标交互（未选中时不拦截滚动）。
-    /// </summary>
-    public bool SupportsInPlaceEdit => Capabilities.CanEditText;
 
-    /// <summary>悬停小标是否可见（折叠与透明度动画由视图层完成）。</summary>
-    public bool ShowHoverActions => Capabilities.HasAnyAction;
+    // ————————————————— 右键菜单项的可用性 —————————————————
+    //
+    // 全部由能力声明驱动，视图层不按具体类型分支；新增 unit 类型时菜单自动适配。
+
+    /// <summary>是否提供「编辑」项。</summary>
+    public bool CanEdit => Capabilities.CanEditText;
+
+    /// <summary>是否提供「打开」项（文本 unit 的"打开"就是编辑，故两者互斥）。</summary>
+    public bool CanOpen => Capabilities.OpenBehavior != UnitOpenBehavior.None && !Capabilities.CanEditText;
+
+    /// <summary>是否提供「在资源管理器中显示」项。</summary>
+    public bool CanReveal => Capabilities.CanReveal;
+
+    /// <summary>是否提供「复制」项。</summary>
+    public bool CanCopy => Capabilities.CanCopyToClipboard;
 
     /// <summary>切换选中状态。</summary>
     public void ToggleSelection() => IsSelected = !IsSelected;

@@ -687,3 +687,47 @@ App          SettingsViewModel + SettingsWindow   更新 UI；TrayIconHost 提�
 ### 兜底
 
 唤醒通道创建失败（权限异常）时退回原来的提示框 —— 功能降级但不会静默无响应。
+
+---
+
+## 20. 交互改造：右键菜单 + 退格删除（v1.4.0）
+
+### 改动
+
+1. 卡片右上角的悬停按钮组（编辑/复制/打开/移除）**整体移除**，改为右键菜单；
+2. 选中后按 `Backspace` 删除，与 `Delete` 等价。
+
+### 为什么右键菜单更好
+
+| 维度 | 悬停按钮 | 右键菜单 |
+| --- | --- | --- |
+| 遮挡内容 | 会压在图片/文字右上角（曾为"亮色图片上看不清"专门加半透明底与描边） | 不遮挡 |
+| 可发现性 | 只有悬停才出现，新用户不知道有操作 | 右键是 Windows 用户的条件反射 |
+| 可扩展性 | 每加一个动作就要挤一个 22×22 图标，空间很快不够 | 竖向列表，加项不影响布局 |
+| 无障碍 | 图标按钮需要手写 AutomationProperties.Name | 菜单项自带文本标签 |
+| 误触 | 点删除就在内容旁，容易误点 | 需要两步，更安全 |
+
+### 菜单项如何做到「不按类型分支」
+
+`UnitViewModel` 暴露 4 个由 `UnitCapabilities` 推导的布尔属性（`CanOpen` / `CanEdit` / `CanCopy` / `CanReveal`），
+XAML 只做 `Visibility` 绑定。新增 unit 类型时菜单自动适配，无需改视图。
+
+`CanOpen` 特意写成 `OpenBehavior != None && !CanEditText` —— 文本的"打开"就是"编辑"，
+同时出现会让菜单有两个等效项。有单测把「类型 → 菜单」整张矩阵钉死（`UnitContextMenuCapabilityTests`）。
+
+### 右键必须先选中
+
+菜单里的「复制」「移除」作用于**当前选择**（复用 `CopySelectionCommand` / `RemoveSelectionCommand`，
+与工具栏按钮、快捷键语义一致）。因此右键时先确保被点卡片处于选中态，否则会出现
+「右键 A 却删了之前选中的 B」。若被点项已在多选集合内则保留整个选择。
+
+### 退格键的安全边界
+
+`Backspace` 在文本框内是删字符。视图层用 `Keyboard.FocusedElement is TextBox` 判定编辑态，
+编辑中直接放行给文本框。已实测：编辑框内连按 5 次退格，文本减少 5 个字符、卡片保留。
+
+### 连带清理
+
+删除悬停按钮后留下三处死代码，一并移除：`IconButton.Card` / `IconButton.Card.Danger` 样式、
+`UnitViewModel.SupportsInPlaceEdit`。（`UnitCapabilities.HasAnyAction` 保留：仍被单测引用，
+用于表达"该类型至少有一个可用动作"的领域语义。）

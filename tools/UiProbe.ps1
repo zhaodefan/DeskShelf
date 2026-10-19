@@ -66,6 +66,16 @@ public static class DeskShelfProbe
         mouse_event(0x0004, 0, 0, 0, IntPtr.Zero);
     }
 
+    /// <summary>在指定屏幕坐标执行一次右键单击。</summary>
+    public static void ClickRight(int x, int y)
+    {
+        SetCursorPos(x, y);
+        System.Threading.Thread.Sleep(120);
+        // MOUSEEVENTF_RIGHTDOWN = 0x0008, MOUSEEVENTF_RIGHTUP = 0x0010
+        mouse_event(0x0008, 0, 0, 0, IntPtr.Zero);
+        System.Threading.Thread.Sleep(40);
+        mouse_event(0x0010, 0, 0, 0, IntPtr.Zero);
+    }
     /// <summary>在当前光标位置滚动鼠标滚轮（负数表示向下）。</summary>
     public static void Scroll(int notches)
     {

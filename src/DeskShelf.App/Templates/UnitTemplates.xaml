@@ -44,44 +44,6 @@
                                 Content="{TemplateBinding Content}"
                                 ContentTemplate="{TemplateBinding ContentTemplate}"
                                 Margin="9,7" />
-
-              <!-- 右上角悬停小标 -->
-              <StackPanel x:Name="Actions"
-                          Orientation="Horizontal"
-                          HorizontalAlignment="Right"
-                          VerticalAlignment="Top"
-                          Margin="0,3,3,0"
-                          Opacity="0"
-                          IsHitTestVisible="False">
-                <Button x:Name="EditButton"
-                        Style="{StaticResource IconButton.Card}"
-                        Command="{Binding DataContext.ActivateUnitCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        CommandParameter="{Binding}"
-                        ToolTip="编辑">
-                  <ctl:Icon Geometry="{StaticResource Icon.Edit}" Size="14" />
-                </Button>
-                <Button x:Name="CopyButton"
-                        Style="{StaticResource IconButton.Card}"
-                        Command="{Binding DataContext.CopyUnitCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        CommandParameter="{Binding}"
-                        ToolTip="复制">
-                  <ctl:Icon Geometry="{StaticResource Icon.Copy}" Size="14" />
-                </Button>
-                <Button x:Name="OpenButton"
-                        Style="{StaticResource IconButton.Card}"
-                        Command="{Binding DataContext.ActivateUnitCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        CommandParameter="{Binding}"
-                        ToolTip="打开">
-                  <ctl:Icon Geometry="{StaticResource Icon.External}" Size="14" />
-                </Button>
-                <Button x:Name="RemoveButton"
-                        Style="{StaticResource IconButton.Card.Danger}"
-                        Command="{Binding DataContext.RemoveUnitCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        CommandParameter="{Binding}"
-                        ToolTip="移除">
-                  <ctl:Icon Geometry="{StaticResource Icon.Close}" Size="14" />
-                </Button>
-              </StackPanel>
             </Grid>
           </Border>
 
@@ -89,35 +51,18 @@
             <Trigger Property="IsMouseOver" Value="True">
               <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.Surface.Hover}" />
               <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Border.Strong}" />
-              <Setter TargetName="Actions" Property="Opacity" Value="1" />
-              <Setter TargetName="Actions" Property="IsHitTestVisible" Value="True" />
             </Trigger>
 
             <Trigger Property="IsSelected" Value="True">
               <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
               <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.Accent.Subtle}" />
-              <Setter TargetName="Actions" Property="Opacity" Value="1" />
-              <Setter TargetName="Actions" Property="IsHitTestVisible" Value="True" />
             </Trigger>
 
-            <!-- 编辑态：小标让位给文本框 -->
+            <!-- 编辑态：高亮边框，背景回到表面色以便看清文字 -->
             <Trigger Property="IsEditing" Value="True">
-              <Setter TargetName="Actions" Property="Opacity" Value="0" />
-              <Setter TargetName="Actions" Property="IsHitTestVisible" Value="False" />
               <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
               <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.Surface}" />
             </Trigger>
-
-            <!-- 能力声明为 false 的动作直接隐藏（而非置灰），保持界面干净 -->
-            <DataTrigger Binding="{Binding Capabilities.CanEditText}" Value="False">
-              <Setter TargetName="EditButton" Property="Visibility" Value="Collapsed" />
-            </DataTrigger>
-            <DataTrigger Binding="{Binding Capabilities.CanCopyToClipboard}" Value="False">
-              <Setter TargetName="CopyButton" Property="Visibility" Value="Collapsed" />
-            </DataTrigger>
-            <DataTrigger Binding="{Binding Capabilities.OpenBehavior}" Value="None">
-              <Setter TargetName="OpenButton" Property="Visibility" Value="Collapsed" />
-            </DataTrigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
       </Setter.Value>
@@ -131,11 +76,46 @@
 
   <!--#region 卡片容器：卡片外壳 + 按 ViewKey 选择的内容模板 -->
   <DataTemplate x:Key="View.Unit.Card" DataType="{x:Type vm:UnitViewModel}">
+    <!--
+      Tag 承载面板 ViewModel（命令都在它上面）。
+      ContextMenu 不在可视化树内，无法用 RelativeSource 找到 Window，
+      因此菜单通过 PlacementTarget（即本卡片）间接取到 Tag 与 DataContext。
+    -->
     <units:UnitCard
         Margin="0,0,0,8"
         Style="{StaticResource UnitCardStyle}"
         IsSelected="{Binding IsSelected, Mode=OneWay}"
-        IsEditing="{Binding IsEditing, Mode=OneWay}">
+        IsEditing="{Binding IsEditing, Mode=OneWay}"
+        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
+      <units:UnitCard.ContextMenu>
+        <ContextMenu DataContext="{Binding PlacementTarget, RelativeSource={RelativeSource Self}}">
+          <MenuItem Header="打开"
+                    AutomationProperties.Name="打开"
+                    Command="{Binding Tag.ActivateUnitCommand}"
+                    CommandParameter="{Binding DataContext}"
+                    Visibility="{Binding DataContext.CanOpen, Converter={StaticResource Converter.BoolToVisibility}}" />
+          <MenuItem Header="编辑"
+                    AutomationProperties.Name="编辑"
+                    Command="{Binding Tag.ActivateUnitCommand}"
+                    CommandParameter="{Binding DataContext}"
+                    Visibility="{Binding DataContext.CanEdit, Converter={StaticResource Converter.BoolToVisibility}}" />
+          <MenuItem Header="复制"
+                    AutomationProperties.Name="复制"
+                    Command="{Binding Tag.CopySelectionCommand}"
+                    Visibility="{Binding DataContext.CanCopy, Converter={StaticResource Converter.BoolToVisibility}}" />
+          <MenuItem Header="在资源管理器中显示"
+                    AutomationProperties.Name="在资源管理器中显示"
+                    Command="{Binding Tag.RevealUnitCommand}"
+                    CommandParameter="{Binding DataContext}"
+                    Visibility="{Binding DataContext.CanReveal, Converter={StaticResource Converter.BoolToVisibility}}" />
+          <Separator />
+          <MenuItem Header="移除"
+                    AutomationProperties.Name="移除"
+                    Command="{Binding Tag.RemoveSelectionCommand}"
+                    InputGestureText="Del / Backspace" />
+        </ContextMenu>
+      </units:UnitCard.ContextMenu>
+
       <ContentControl Content="{Binding}"
                       ContentTemplateSelector="{StaticResource Selector.UnitTemplate}"
                       Focusable="False" />

@@ -77,6 +77,7 @@ public partial class PanelWindow : Window
         Deactivated += OnDeactivated;
         PreviewKeyDown += OnPreviewKeyDown;
         PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
+        PreviewMouseRightButtonDown += OnPreviewMouseRightButtonDown;
         SourceInitialized += OnSourceInitialized;
 
         AllowDrop = true;
@@ -402,6 +403,13 @@ public partial class PanelWindow : Window
                 _viewModel.RemoveSelectionCommand.Execute(null);
                 break;
 
+            // 退格键与 Delete 等价：选中后按一下就删，比去找 Delete 更顺手。
+            // 必须被 !editing 拦住，否则在行内编辑框里按退格会连带删掉整张卡片。
+            case Key.Back when !editing:
+                e.Handled = true;
+                _viewModel.RemoveSelectionCommand.Execute(null);
+                break;
+
             case Key.Escape:
                 e.Handled = true;
                 if (editing)
@@ -416,6 +424,39 @@ public partial class PanelWindow : Window
 
                 break;
         }
+    }
+
+    /// <summary>
+    /// 右键：先让被点的卡片成为选中项，再弹出操作菜单。
+    /// </summary>
+    /// <remarks>
+    /// 菜单里的「复制」「移除」作用于**当前选择**，因此必须先把右键目标选上，
+    /// 否则会出现「右键 A 却删了之前选中的 B」。
+    /// 若右键目标已在多选集合内，则保留整个选择（用户通常想对整组操作）。
+    /// </remarks>
+    private void OnPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var card = FindAncestor<UnitCard>(e.OriginalSource as DependencyObject);
+        if (card?.DataContext is not UnitViewModel unit)
+        {
+            return;
+        }
+
+        // 编辑态下右键交给文本框自己的菜单（复制/粘贴文字）
+        if (card.IsEditing)
+        {
+            return;
+        }
+
+        CommitActiveEdit();
+
+        if (!unit.IsSelected)
+        {
+            _viewModel.ClearSelection();
+            unit.SetSelected(true);
+        }
+
+        _logger.LogDebug("右键 unit {Id}。", unit.Id);
     }
 
     private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
