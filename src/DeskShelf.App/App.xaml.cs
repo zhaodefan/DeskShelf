@@ -30,6 +30,7 @@ public partial class App : System.Windows.Application, IThemeApplier
     private const string InstanceMutexName = @"Global\DeskShelf.SingleInstance";
 
     private Mutex? _instanceMutex;
+    private SingleInstanceActivation? _activation;
     private ServiceProvider? _services;
     private PanelWindow? _panel;
     private TrayIconHost? _tray;
@@ -79,9 +80,30 @@ public partial class App : System.Windows.Application, IThemeApplier
         _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
-            MessageBox.Show("桌面置物架已经在运行（请查看任务栏通知区域）。", "桌面置物架", MessageBoxButton.OK, MessageBoxImage.Information);
+            // 用户再次点击快捷方式时的正确行为是「把已有面板叫出来」，而不是弹提示框就退出 ——
+            // 后者从用户视角就是「点了没反应 / 打不开」（尤其是面板已收起、托盘图标藏在折叠区时）。
+            if (SingleInstanceActivation.TrySignalExisting())
+            {
+                Shutdown();
+                return;
+            }
+
+            // 唤醒通道不可用（极少见：权限或对象被占用）时退回提示框，至少让用户知道程序在运行
+            MessageBox.Show(
+                "桌面置物架已经在运行（请查看任务栏通知区域）。",
+                "桌面置物架",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
             Shutdown();
             return;
+        }
+
+        // 尽早创建唤醒事件：即使后启动的实例在面板就绪前就发来请求，
+        // 自动重置事件会保持有信号，等稍后注册监听时立刻被消费，不会丢。
+        _activation = new SingleInstanceActivation();
+        if (!_activation.Initialize())
+        {
+            _activation = null;
         }
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -127,6 +149,22 @@ public partial class App : System.Windows.Application, IThemeApplier
 
         RegisterHotkey();
 
+        // 监听「再次启动」请求：走 Dispatcher 切回 UI 线程再显示面板
+        _activation?.Listen(() => Dispatcher.BeginInvoke(
+            new Action(() =>
+            {
+                try
+                {
+                    _logger?.LogInformation("收到再次启动请求，显示面板。");
+                    _panel?.ShowPanel();
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "响应再次启动请求失败。");
+                }
+            }),
+            DispatcherPriority.Normal));
+
         // 首发即显示面板（启动后直接可用；后续可在设置里改为静默启动）
         _panel.ShowPanel();
     }
@@ -158,6 +196,7 @@ public partial class App : System.Windows.Application, IThemeApplier
         finally
         {
             _services?.Dispose();
+            _activation?.Dispose();
             _instanceMutex?.ReleaseMutex();
             _instanceMutex?.Dispose();
         }
