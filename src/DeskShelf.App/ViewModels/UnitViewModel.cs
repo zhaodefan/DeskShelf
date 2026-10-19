@@ -85,8 +85,21 @@ public sealed partial class UnitViewModel : ObservableObject
     /// <summary>类型显示名（用于无障碍与提示）。</summary>
     public string KindName => Presentation.DisplayName;
 
-    /// <summary>文本内容（仅文本 unit 非空）。</summary>
-    public string? Text { get; }
+    /// <summary>
+    /// 文本内容（仅文本 unit 非空）。
+    /// </summary>
+    /// <remarks>
+    /// 必须是可通知属性：卡片上的预览文本绑定到它，而行内编辑提交后
+    /// <see cref="PanelViewModel.SyncUnits"/> 只会**复用**已有 ViewModel（不重建），
+    /// 所以不主动通知就永远显示旧值 —— 曾表现为「新建文本输入后预览是空白，双击才看得到」。
+    /// </remarks>
+    public string? Text
+    {
+        get => _text;
+        private set => SetProperty(ref _text, value);
+    }
+
+    private string? _text;
 
     /// <summary>文件夹路径（仅文件夹 unit 非空）。</summary>
     public string? FolderPath { get; }
@@ -174,7 +187,21 @@ public sealed partial class UnitViewModel : ObservableObject
     }
 
     /// <summary>提交编辑后的文本。</summary>
-    public bool CommitText(string text) => _shelf.UpdateText(Id, text);
+    /// <returns>内容确有变化时为 <c>true</c>。</returns>
+    public bool CommitText(string text)
+    {
+        var changed = _shelf.UpdateText(Id, text);
+
+        // 即使领域层判定「无变化」也同步一次显示值：新建的空 unit 首次输入时
+        // 归一化后的文本可能与编辑框内容不同（例如首尾空白被裁剪），
+        // 这里保证卡片预览始终与最终落盘内容一致。
+        if (Model is TextUnit textUnit)
+        {
+            Text = textUnit.Text;
+        }
+
+        return changed;
+    }
 
     internal static string FormatSize(long bytes) => bytes switch
     {

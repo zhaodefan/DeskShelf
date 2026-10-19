@@ -212,3 +212,19 @@ public sealed class ShelfTestContext
     /// <summary>被测服务。</summary>
     public ShelfService Service { get; }
 }
+/// <summary>返回固定字节的图片字节源（测试用，仅需满足构造依赖）。</summary>
+public sealed class FakeImageBytesSource : IImageBytesSource
+{
+    /// <summary>读取时返回的字节；默认空数组。</summary>
+    public byte[]? Bytes { get; set; } = Array.Empty<byte>();
+
+    /// <summary>读取次数。</summary>
+    public int ReadCount { get; private set; }
+
+    /// <inheritdoc />
+    public Task<byte[]?> ReadAsync(StorageKey key, CancellationToken cancellationToken = default)
+    {
+        ReadCount++;
+        return Task.FromResult(Bytes);
+    }
+}

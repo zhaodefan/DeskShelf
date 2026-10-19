@@ -166,7 +166,8 @@
     <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
     <Setter Property="FontSize" Value="{DynamicResource Font.Size.Body}" />
     <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
-    <Setter Property="CaretBrush" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource Brush.Caret}" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Selection}" />
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="TextBox">
@@ -195,8 +196,8 @@
     <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
     <Setter Property="FontSize" Value="{DynamicResource Font.Size.Caption}" />
     <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
-    <Setter Property="CaretBrush" Value="{DynamicResource Brush.Text.Primary}" />
-    <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Accent}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource Brush.Caret}" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Selection}" />
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="TextBox">

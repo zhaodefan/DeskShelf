@@ -63,6 +63,12 @@
   <SolidColorBrush x:Key="Brush.Scroll.Thumb.Hover" Color="{StaticResource Color.Scroll.Thumb.Hover}" />
   <SolidColorBrush x:Key="Brush.Icon" Color="{StaticResource Color.Text.Secondary}" />
   <SolidColorBrush x:Key="Brush.Icon.Hover" Color="{StaticResource Color.Text.Primary}" />
+  <!--
+    输入光标与选区：跟随主文本色，从而在明暗主题下都保持足够对比度。
+    若不显式设置，TextBox 会沿用系统默认的光标色（深色主题下几乎是黑色，几乎看不见）。
+  -->
+  <SolidColorBrush x:Key="Brush.Caret" Color="{StaticResource Color.Text.Primary}" />
+  <SolidColorBrush x:Key="Brush.Selection" Color="{StaticResource Color.Accent}" />
   <SolidColorBrush x:Key="Brush.Transparent" Color="Transparent" />
   <!-- 叠在内容（尤其是图片）之上的浮层控件底色，必须半透明且对比稳定 -->
   <SolidColorBrush x:Key="Brush.Overlay" Color="#F2FFFFFF" />

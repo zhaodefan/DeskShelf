@@ -163,7 +163,9 @@
                Padding="0"
                FontFamily="{DynamicResource Font.Ui}"
                FontSize="{DynamicResource Font.Size.Body}"
-               Foreground="{DynamicResource Brush.Text.Primary}" />
+               Foreground="{DynamicResource Brush.Text.Primary}"
+               CaretBrush="{DynamicResource Brush.Caret}"
+               SelectionBrush="{DynamicResource Brush.Selection}" />
     </Grid>
     <DataTemplate.Triggers>
       <DataTrigger Binding="{Binding IsEditing}" Value="True">
