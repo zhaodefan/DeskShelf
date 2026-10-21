@@ -109,6 +109,74 @@ public sealed class ImageFileStore : IImageStore
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 修复历史上被存成「全透明」的图片，并重建它们的缩略图。
+    /// </summary>
+    /// <returns>实际修复的文件数。</returns>
+    /// <remarks>
+    /// v1.4.0 及更早版本会把不带 alpha 通道的剪贴板位图（Snipaste 等截图工具的常见输出）
+    /// 原样编码成 alpha 全 0 的 PNG —— 面板里就是一张空白卡片，但 RGB 数据是好的。
+    /// 本方法就地改写这些文件；改坏的风险为零，因为「alpha 全 0」的 PNG 本来也不可显示。
+    /// </remarks>
+    public int RepairInvisibleImages()
+    {
+        if (!Directory.Exists(_imageDirectory))
+        {
+            return 0;
+        }
+
+        var repaired = 0;
+        foreach (var path in Directory.EnumerateFiles(_imageDirectory, "*.png"))
+        {
+            // 缩略图是原件的派生物，原件修好后会重新生成，这里跳过
+            if (Path.GetFileName(path).Contains(".thumb.", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                var bytes = File.ReadAllBytes(path);
+                if (ImageAlphaSanitizer.TryRepairPng(bytes) is not { Length: > 0 } fixedBytes)
+                {
+                    continue;
+                }
+
+                File.WriteAllBytes(path, fixedBytes);
+                RegenerateThumbnail(path);
+                repaired++;
+                _logger.LogInformation(
+                    "已修复全透明图片：{File}（{Before} → {After} 字节）。",
+                    Path.GetFileName(path), bytes.Length, fixedBytes.Length);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "修复图片失败：{Path}", path);
+            }
+        }
+
+        return repaired;
+    }
+
+    /// <summary>强制重建某张原图的缩略图（旧的缩略图也是全透明的，必须删掉）。</summary>
+    private void RegenerateThumbnail(string originalPath)
+    {
+        var directory = Path.GetDirectoryName(originalPath) ?? _imageDirectory;
+        var thumbnailPath = Path.Combine(
+            directory,
+            Path.GetFileNameWithoutExtension(originalPath) + ".thumb.png");
+
+        if (File.Exists(thumbnailPath))
+        {
+            File.Delete(thumbnailPath);
+        }
+
+        // 缩略图内部用 ConfigureAwait(false) 且解码/编码都在线程池上完成，不会与 UI 线程互锁
+        TryCreateThumbnailAsync(originalPath, thumbnailPath, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+    }
+
     private async Task<bool> TryCreateThumbnailAsync(string sourcePath, string targetPath, CancellationToken cancellationToken)
     {
         try

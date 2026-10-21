@@ -731,3 +731,83 @@ XAML 只做 `Visibility` 绑定。新增 unit 类型时菜单自动适配，无�
 删除悬停按钮后留下三处死代码，一并移除：`IconButton.Card` / `IconButton.Card.Danger` 样式、
 `UnitViewModel.SupportsInPlaceEdit`。（`UnitCapabilities.HasAnyAction` 保留：仍被单测引用，
 用于表达"该类型至少有一个可用动作"的领域语义。）
+
+---
+
+## 21. 粘贴截图全透明（v1.4.1）
+
+### 现象
+
+Snipaste 截图（`Ctrl+Shift+A`）后 `Ctrl+V` 粘进面板，卡片尺寸、字节数都对，但显示为空白（全透明），
+双击用看图软件打开也是空白。
+
+### 取证过程
+
+写了一批诊断工具放在 `tools/`（`Add-Type -Path` 直接加载，**必须 C# 5 语法**，因为 PS 5.1 的编译器只到那儿）：
+
+| 工具 | 作用 |
+| --- | --- |
+| `ClipProbe.cs` | `EnumClipboardFormats` + `GetClipboardFormatName` 枚举当前剪贴板格式 |
+| `DibProbe.cs` | 解析 `BITMAPINFOHEADER`：`biSize`/`biWidth`/`biHeight`/`biBitCount`/`biCompression`，V4/V5 另读 `redMask`(40)、`alphaMask`(52)、`csType`(68)，32bpp 时抽样统计 alpha 分布 |
+| `PngAlphaProbe.cs` | 统计 PNG 的 alpha 范围与透明像素占比 |
+| `PngRgbProbe.cs` | 报告 RGB 峰值/非黑像素比例；`Repair` 把 alpha 置 255 另存 |
+| `ClipImageRepro.cs` | 照抄产品读取路径复现（须 STA 线程） |
+
+**踩过的坑**：`DibProbe` 早先对每个格式调 `GlobalSize`，遇到 `CF_BITMAP` 这类非 HGLOBAL 句柄会触发
+`STATUS_HEAP_CORRUPTION`（退出码 `3221226356` / `0xC0000374`），直接崩掉宿主 pwsh。已移除该调用。
+
+实测 Snipaste 放入剪贴板的格式：
+
+```
+DeviceIndependentBitmap(CF_DIB), Bitmap(CF_BITMAP), System.Drawing.Bitmap,
+System.Windows.Media.Imaging.BitmapSource, Format17(CF_DIBV5)
+```
+
+- `CF_DIB`：`biSize=40 biWidth=856 biHeight=264 biBitCount=24 biCompression=0`（24bpp `BI_RGB`）
+- `CF_DIBV5`：`biSize=124 biBitCount=24 alphaMask=0x00000000`
+
+**关键结论：Snipaste 不提供 PNG 自定义格式**（Chrome/QQ/微信通常会提供，那份 alpha 是正确的），
+而且源位图是 **24bpp、根本没有 alpha 通道**。所以「优先读 `PNG` 格式」这条常见方案对本例无效。
+
+WPF 把该 DIB 包装成 `System.Windows.Interop.InteropBitmap`，像素格式 `Bgra32` ——
+多出来的 alpha 通道全为 0。旧代码 `new PngBitmapEncoder()` 原样编码 → 100% 透明的 PNG。
+
+用户数据侧同样取证：`%APPDATA%\DeskShelf\images\` 下 4 张图 alpha `0~0`、透明像素 100%，
+但 RGB 完好（非黑像素 100%、峰值 `(255,255,255)`）→ 说明丢的只有 alpha，图可以救回。
+
+### 修复
+
+`src/DeskShelf.Infrastructure/Imaging/ImageAlphaSanitizer.cs`：
+
+- `IsFullyTransparent(BitmapSource)`：仅对 `Bgra32`/`Pbgra32` 判定，逐像素看 alpha；无 alpha 通道的格式一律 `false`
+- `EnsureOpaque(BitmapSource)`：**只在全 0 时**才重建（alpha 置 255、RGB 不动），结果 `Freeze()`；否则返回原实例
+- `TryRepairPng(byte[])`：解码 → 需修才重编码，返回 `null` 表示不用动
+
+为什么不按「来源应用」判断：剪贴板只暴露格式与字节，没有可靠的应用标识；
+「整幅 alpha 全 0」是一个客观、可验证、且不可能出现在正常透明图上的条件
+（真正带透明区域的图 alpha 不会全为 0）。
+
+接入点：
+
+1. `DataObjectReader.TryReadImagePng` 编码前 `EnsureOpaque`
+2. `ImageFileStore.RepairInvisibleImages()` 扫描 `images\*.png`（跳过 `.thumb.`）就地修复并**重建缩略图**
+3. `App.RepairInvisibleImagesOnce()` 启动时调用，标记文件 `%APPDATA%\DeskShelf\.image-repair-v1` 保证只跑一次；
+   失败不写标记（下次重试），异常只记日志不影响启动
+
+**必须重建缩略图**：`ThumbnailLoader` 只读缩略图字节、不会自行重建，只删缩略图会让卡片显示占位图。
+
+### 验证
+
+- 真机：4 张坏图全部 alpha `0~0` → `255~255`，缩略图从 175/179/252 字节（透明）变成 3477/3457/15532 字节（真实图）
+- 端到端：往真实剪贴板写 `CF_DIBV5`（`alphaMask=0`）→ `Clipboard.GetImage()` 得到 `InteropBitmap` alpha `0~0`
+  → `DataObjectReader.TryReadImagePng` 输出 PNG alpha `255~255`，像素 `B=50 G=100 R=200 A=255`
+- 单测：`ImageAlphaSanitizerTests` 11 项，含走真实 `DataObject` 的回归
+
+**环境限制记录**：本机某轮自动化中 `SetCursorPos` 恒返回 `False`（`GetClipCursor` 显示裁剪区为整屏、光标在内部，
+`SetCursorPos` 连"设为当前位置"都失败），无法驱动 Snipaste 拖选。故端到端验证改用「原生剪贴板 API 构造同形 DIB」
+的方式完成 —— 比真实拖选更可控、可重复。
+
+### 遗留
+
+- `Pbgra32` 且 alpha 全 0 时 RGB 已被预乘清零，无法还原（实测截图工具不属于此类）
+- 用户故意粘贴的"整幅全透明图"会被修成不透明（这种图存进置物架本身无意义，不单独处理）

@@ -3,6 +3,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using DeskShelf.Application.Services;
+using DeskShelf.Infrastructure.Imaging;
 
 namespace DeskShelf.Infrastructure.Clipboard;
 
@@ -77,8 +78,13 @@ public static class DataObjectReader
             return null;
         }
 
+        // 截图工具（实测 Snipaste）放进剪贴板的是不带 alpha 通道的 24bpp DIB，
+        // WPF 会用 Bgra32 的 InteropBitmap 呈现它，凭空多出的 alpha 全为 0。
+        // 不修就会得到一张 100% 透明的 PNG —— 用户看到的就是「粘进去是张空白卡」。
+        var displayable = ImageAlphaSanitizer.EnsureOpaque(source);
+
         var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(source));
+        encoder.Frames.Add(BitmapFrame.Create(displayable));
         using var stream = new MemoryStream();
         encoder.Save(stream);
         return stream.ToArray();

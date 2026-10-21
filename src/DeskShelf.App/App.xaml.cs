@@ -131,6 +131,9 @@ public partial class App : System.Windows.Application, IThemeApplier
 
         VerifyUnitCatalog();
 
+        // 必须在面板与缩略图加载器创建之前跑：否则 ThumbnailLoader 会缓存住透明图
+        RepairInvisibleImagesOnce();
+
         // 先读设置：窗口定位与热键都依赖它（缺失文件时内部回退默认值）
         try
         {
@@ -297,6 +300,45 @@ public partial class App : System.Windows.Application, IThemeApplier
 
     private void OnHotkeyPressed(object? sender, EventArgs e)
         => Dispatcher.BeginInvoke(new Action(() => _panel?.ToggleVisibility()), DispatcherPriority.Normal);
+
+    /// <summary>
+    /// 一次性修复历史上被存成「全透明」的图片（v1.4.0 及更早版本的剪贴板缺陷）。
+    /// </summary>
+    /// <remarks>
+    /// 修复本身是幂等的，但每次启动都解码整个图片目录不值得，因此用标记文件保证只扫一次。
+    /// 失败时不写标记，下次启动会自然重试 —— 修复失败绝不该影响启动。
+    /// </remarks>
+    private void RepairInvisibleImagesOnce()
+    {
+        const string markerName = ".image-repair-v1";
+
+        try
+        {
+            if (_services is null)
+            {
+                return;
+            }
+
+            var paths = _services.GetRequiredService<AppPaths>();
+            var marker = Path.Combine(paths.Root, markerName);
+            if (File.Exists(marker))
+            {
+                return;
+            }
+
+            var repaired = _services.GetRequiredService<ImageFileStore>().RepairInvisibleImages();
+            File.WriteAllText(marker, DateTimeOffset.Now.ToString("O"));
+
+            if (repaired > 0)
+            {
+                _logger?.LogInformation("已修复 {Count} 张历史上显示为全透明的图片。", repaired);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "修复全透明图片失败，下次启动将重试。");
+        }
+    }
 
     private bool IsLightTheme()
         => _services?.GetRequiredService<ISettingsStore>().Current.Theme switch

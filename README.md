@@ -8,7 +8,7 @@
 
 - 目标框架：`.NET 8 (net8.0-windows)` + `WPF`
 - 平台：Windows 10 1809+ / Windows 11（64 位）
-- 当前版本：**v1.4.0**（悬停按钮改为右键菜单 + 退格快速删除）
+- 当前版本：**v1.4.1**（修复 Snipaste 等截图工具粘贴后图片全透明）
 
 ---
 
@@ -192,10 +192,26 @@ dotnet run --project .\src\DeskShelf.App\DeskShelf.App.csproj
 - [ ] 任务栏位于顶部 / 左侧 / 自动隐藏时面板不遮挡
 - [ ] `Alt+X` 在画图、写字板、Excel、浏览器前台时是否被当作菜单加速键
 - [ ] 剪贴板被 Office / 截图工具占用时连续快速 `Ctrl+V`
+- [ ] **Snipaste 截图（`Ctrl+Shift+A`）后 `Ctrl+V`，图片应正常可见**（v1.4.1 修复，见 §21）
 - [ ] 从 Chrome / VS Code / 记事本 / 资源管理器 / 微信分别拖拽
 - [ ] 以管理员权限运行的程序向本工具拖拽（应被 UIPI 拦下并静默失败）
 - [ ] 400+ unit 时的滚动流畅度与内存占用
 - [ ] 拔掉副屏后窗口是否回到可见区域
+
+### 剪贴板 / 图片诊断工具
+
+`tools/` 下几个独立的 C# 探针，用 `Add-Type -Path` 直接加载（**C# 5 语法**，PS 5.1 的编译器限制）：
+
+| 文件 | 作用 |
+| --- | --- |
+| `ClipProbe.cs` | 枚举当前剪贴板格式（`EnumClipboardFormats` + `GetClipboardFormatName`） |
+| `DibProbe.cs` | 解析 `BITMAPINFOHEADER` / `BITMAPV4V5HEADER`，报告位深、压缩方式、颜色掩码与 alpha 分布 |
+| `PngAlphaProbe.cs` | 统计 PNG 的 alpha 范围与透明像素占比 |
+| `PngRgbProbe.cs` | 报告 RGB 峰值与非黑像素比例；可把 alpha 置 255 另存 |
+| `ClipImageRepro.cs` | 照抄产品读取路径复现「粘贴后图片全透明」（须 STA 线程） |
+
+排查 Snipaste / 截图工具粘贴异常的完整过程见 [开发计划 §21](Docs/Development-Plan.md)。
+**注意**：对 `CF_BITMAP` 这类非 HGLOBAL 句柄调用 `GlobalSize` 会触发 `STATUS_HEAP_CORRUPTION`（`0xC0000374`）崩掉宿主进程。
 
 ## 文档
 

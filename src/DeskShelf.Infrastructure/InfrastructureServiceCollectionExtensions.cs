@@ -46,9 +46,11 @@ public static class InfrastructureServiceCollectionExtensions
 
         // —— 系统适配层 ——
         services.AddSingleton<IUiDispatcher>(_ => new WpfUiDispatcher());
-        services.AddSingleton<IImageStore>(sp => new ImageFileStore(
+        // 具体类型也注册一次：启动时的一次性图片修复需要直接调用它（见 App.xaml.cs）
+        services.AddSingleton(sp => new ImageFileStore(
             paths.Images,
             sp.GetRequiredService<ILogger<ImageFileStore>>()));
+        services.AddSingleton<IImageStore>(sp => sp.GetRequiredService<ImageFileStore>());
         services.AddSingleton<IUnitContentFactory, UnitContentFactory>();
         services.AddSingleton<IClipboardService, WpfClipboardService>();
         services.AddSingleton<ISystemLauncher, ShellLauncher>();
